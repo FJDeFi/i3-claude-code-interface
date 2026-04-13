@@ -4,7 +4,7 @@ from typing import Any
 from anthropic import Anthropic
 
 client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-7-sonnet-latest")
 
 
 def _serialize_content_block(block: Any) -> dict[str, Any]:
