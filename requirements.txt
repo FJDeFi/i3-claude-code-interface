@@ -3,3 +3,4 @@ uvicorn
 pydantic
 python-telegram-bot
 requests
+# sqlite3 is part of Python stdlib; no extra package required.
