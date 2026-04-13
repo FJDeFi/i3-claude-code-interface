@@ -1,9 +1,12 @@
+from typing import Literal, Optional
+
 from pydantic import BaseModel
-from typing import Optional
+
+JobStatus = Literal["pending", "running", "done", "failed"]
 
 
 class Job(BaseModel):
     id: str
     prompt: str
-    status: str = "pending"  # pending, running, done
+    status: JobStatus = "pending"
     result: Optional[str] = None

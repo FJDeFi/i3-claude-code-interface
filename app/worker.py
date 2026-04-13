@@ -1,9 +1,10 @@
 import time
+
+from .agent import agent_loop
 from .state import claim_pending_job, update_job
-from .claude import run_claude
 
 
-def worker_loop():
+def worker_loop() -> None:
     print("Worker started...")
 
     while True:
@@ -13,9 +14,9 @@ def worker_loop():
             print(f"Running job {job.id}")
 
             try:
-                result = run_claude(job.prompt)
+                result = agent_loop(job.prompt)
                 update_job(job.id, "done", result)
-            except Exception as e:
-                update_job(job.id, "failed", str(e))
+            except Exception as exc:
+                update_job(job.id, "failed", str(exc))
 
         time.sleep(1)

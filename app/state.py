@@ -4,7 +4,8 @@ import uuid
 from contextlib import closing
 from pathlib import Path
 from typing import Optional
-from .models import Job
+
+from .models import Job, JobStatus
 
 DB_PATH = os.getenv(
     "JOB_DB_PATH", str(Path(__file__).resolve().parent / "jobs.db")
@@ -99,7 +100,7 @@ def claim_pending_job() -> Optional[Job]:
     )
 
 
-def update_job(job_id: str, status: str, result: Optional[str] = None) -> None:
+def update_job(job_id: str, status: JobStatus, result: Optional[str] = None) -> None:
     with closing(_get_conn()) as conn:
         conn.execute(
             "UPDATE jobs SET status = ?, result = ? WHERE id = ?",

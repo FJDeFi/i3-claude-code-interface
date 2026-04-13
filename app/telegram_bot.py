@@ -1,6 +1,7 @@
 import asyncio
 import os
 import time
+
 import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
@@ -12,6 +13,8 @@ RESULT_TIMEOUT = float(os.getenv("RESULT_TIMEOUT", "60"))
 
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
     prompt = update.message.text
 
     try:
@@ -29,12 +32,11 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             result_resp = await asyncio.to_thread(
                 requests.get, f"{API_URL}/result/{job_id}", timeout=15
             )
+            if result_resp.status_code == 404:
+                await update.message.reply_text("❌ Job error: not found")
+                return
             result_resp.raise_for_status()
             payload = result_resp.json()
-
-            if payload.get("error"):
-                await update.message.reply_text(f"❌ Job error: {payload['error']}")
-                return
 
             status = payload.get("status")
             if status == "done":
@@ -52,8 +54,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⏳ Job still running after {int(RESULT_TIMEOUT)}s: {job_id}"
         )
 
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error: {str(e)}")
+    except requests.RequestException as exc:
+        await update.message.reply_text(f"❌ Network/API error: {exc}")
+    except Exception as exc:
+        await update.message.reply_text(f"❌ Error: {exc}")
 
 
 def run_bot():
@@ -61,7 +65,7 @@ def run_bot():
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not set")
 
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(MessageHandler(filters.TEXT, handle))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
 
     print("Telegram bot running...")
     app.run_polling()

@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+
 from .state import create_job, get_job
 
 app = FastAPI()
@@ -14,6 +15,6 @@ def submit(prompt: str):
 def result(job_id: str):
     job = get_job(job_id)
     if not job:
-        return {"error": "not found"}
+        raise HTTPException(status_code=404, detail="not found")
 
     return {"status": job.status, "result": job.result}
