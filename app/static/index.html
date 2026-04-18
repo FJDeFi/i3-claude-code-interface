@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Code Interface</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Web Client</p>
+          <h1>Talk to your server from the browser</h1>
+          <p class="hero-copy">
+            Submit prompts, watch job progress, and read results in a clean
+            chat-style interface.
+          </p>
+        </div>
+        <div class="hero-status" id="connection-card">
+          <span class="status-dot" id="status-dot"></span>
+          <div>
+            <p class="status-label">Server status</p>
+            <p class="status-value" id="server-status">Checking connection...</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <header class="panel-header">
+          <div>
+            <h2>Conversation</h2>
+            <p>Messages are sent to the FastAPI backend and resolved by the worker.</p>
+          </div>
+          <button class="ghost-button" id="clear-chat" type="button">Clear</button>
+        </header>
+
+        <div class="messages" id="messages">
+          <article class="message assistant">
+            <div class="avatar">AI</div>
+            <div class="bubble">
+              <p class="message-label">Assistant</p>
+              <p>
+                Ready when you are. Type a prompt below to create a new job and
+                fetch the result from the server.
+              </p>
+            </div>
+          </article>
+        </div>
+
+        <form id="prompt-form" class="composer">
+          <label class="sr-only" for="prompt-input">Prompt</label>
+          <textarea
+            id="prompt-input"
+            name="prompt"
+            rows="4"
+            maxlength="4000"
+            placeholder="Ask the server anything..."
+            required
+          ></textarea>
+          <div class="composer-footer">
+            <p class="helper-text" id="helper-text">
+              The UI will poll for completion automatically.
+            </p>
+            <button class="primary-button" id="send-button" type="submit">
+              Send prompt
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
