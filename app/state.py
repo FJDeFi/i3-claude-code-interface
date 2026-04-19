@@ -1,109 +1,168 @@
+"""SQLite-backed storage for chats and chat events.
+
+The schema has two tables:
+
+* ``chats`` — one row per chat, tracking the tmux session name and status.
+* ``chat_events`` — append-only log of user input, assistant output chunks,
+  status transitions, and errors. SSE streams replay rows with id greater
+  than the subscriber's cursor, so reconnecting clients never miss output.
+"""
+
+from __future__ import annotations
+
 import os
 import sqlite3
-import uuid
+import threading
 from contextlib import closing
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
-from .models import Job, JobStatus
+from .models import Chat, ChatEvent, ChatStatus, EventRole
+
 
 DB_PATH = os.getenv(
-    "JOB_DB_PATH", str(Path(__file__).resolve().parent / "jobs.db")
+    "CHAT_DB_PATH", str(Path(__file__).resolve().parent / "chats.db")
 )
 
 
+_write_lock = threading.Lock()
+
+
 def _get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = sqlite3.connect(DB_PATH, timeout=30, isolation_level=None)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     return conn
 
 
-def _row_to_job(row: sqlite3.Row) -> Job:
-    return Job(
-        id=row["id"],
-        prompt=row["prompt"],
-        status=row["status"],
-        result=row["result"],
+def init_db() -> None:
+    with closing(_get_conn()) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS chats (
+                id TEXT PRIMARY KEY,
+                tmux_session TEXT NOT NULL,
+                log_path TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'running',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS chat_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(chat_id) REFERENCES chats(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_chat_events_chat_id
+                ON chat_events(chat_id, id);
+            """
+        )
+
+
+init_db()
+
+
+# --------------------------------------------------------------------- chats
+
+
+def insert_chat(chat_id: str, tmux_session: str, log_path: str) -> Chat:
+    with _write_lock, closing(_get_conn()) as conn:
+        conn.execute(
+            "INSERT INTO chats (id, tmux_session, log_path, status)"
+            " VALUES (?, ?, ?, 'running')",
+            (chat_id, tmux_session, log_path),
+        )
+    return Chat(
+        id=chat_id,
+        tmux_session=tmux_session,
+        log_path=log_path,
+        status="running",
     )
 
 
-def _init_db() -> None:
-    with closing(_get_conn()) as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS jobs (
-                id TEXT PRIMARY KEY,
-                prompt TEXT NOT NULL,
-                status TEXT NOT NULL,
-                result TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        conn.commit()
-
-
-_init_db()
-
-
-def create_job(prompt: str) -> Job:
-    job = Job(id=str(uuid.uuid4()), prompt=prompt)
-    with closing(_get_conn()) as conn:
-        conn.execute(
-            "INSERT INTO jobs (id, prompt, status, result) VALUES (?, ?, ?, ?)",
-            (job.id, job.prompt, job.status, job.result),
-        )
-        conn.commit()
-    return job
-
-
-def get_job(job_id: str) -> Optional[Job]:
+def get_chat(chat_id: str) -> Optional[Chat]:
     with closing(_get_conn()) as conn:
         row = conn.execute(
-            "SELECT id, prompt, status, result FROM jobs WHERE id = ?",
-            (job_id,),
+            "SELECT id, tmux_session, log_path, status FROM chats WHERE id = ?",
+            (chat_id,),
         ).fetchone()
     if not row:
         return None
-    return _row_to_job(row)
-
-
-def claim_pending_job() -> Optional[Job]:
-    with closing(_get_conn()) as conn:
-        row = conn.execute(
-            """
-            SELECT id, prompt, status, result
-            FROM jobs
-            WHERE status = 'pending'
-            ORDER BY created_at
-            LIMIT 1
-            """
-        ).fetchone()
-
-        if not row:
-            return None
-
-        updated = conn.execute(
-            "UPDATE jobs SET status = 'running' WHERE id = ? AND status = 'pending'",
-            (row["id"],),
-        )
-        conn.commit()
-
-        if updated.rowcount != 1:
-            return None
-
-    return Job(
+    return Chat(
         id=row["id"],
-        prompt=row["prompt"],
-        status="running",
-        result=row["result"],
+        tmux_session=row["tmux_session"],
+        log_path=row["log_path"],
+        status=row["status"],
     )
 
 
-def update_job(job_id: str, status: JobStatus, result: Optional[str] = None) -> None:
-    with closing(_get_conn()) as conn:
+def update_chat_status(chat_id: str, status: ChatStatus) -> None:
+    with _write_lock, closing(_get_conn()) as conn:
         conn.execute(
-            "UPDATE jobs SET status = ?, result = ? WHERE id = ?",
-            (status, result, job_id),
+            "UPDATE chats SET status = ? WHERE id = ?",
+            (status, chat_id),
         )
-        conn.commit()
+
+
+def list_chats() -> List[Chat]:
+    with closing(_get_conn()) as conn:
+        rows = conn.execute(
+            "SELECT id, tmux_session, log_path, status FROM chats"
+            " ORDER BY created_at DESC"
+        ).fetchall()
+    return [
+        Chat(
+            id=row["id"],
+            tmux_session=row["tmux_session"],
+            log_path=row["log_path"],
+            status=row["status"],
+        )
+        for row in rows
+    ]
+
+
+# -------------------------------------------------------------------- events
+
+
+def append_chat_event(chat_id: str, role: EventRole, content: str) -> ChatEvent:
+    with _write_lock, closing(_get_conn()) as conn:
+        cursor = conn.execute(
+            "INSERT INTO chat_events (chat_id, role, content) VALUES (?, ?, ?)",
+            (chat_id, role, content),
+        )
+        event_id = cursor.lastrowid
+        row = conn.execute(
+            "SELECT id, chat_id, role, content, created_at"
+            " FROM chat_events WHERE id = ?",
+            (event_id,),
+        ).fetchone()
+    return ChatEvent(
+        id=row["id"],
+        chat_id=row["chat_id"],
+        role=row["role"],
+        content=row["content"],
+        created_at=str(row["created_at"]),
+    )
+
+
+def list_events_after(chat_id: str, after_id: int = 0, limit: int = 500) -> List[ChatEvent]:
+    with closing(_get_conn()) as conn:
+        rows = conn.execute(
+            "SELECT id, chat_id, role, content, created_at FROM chat_events"
+            " WHERE chat_id = ? AND id > ? ORDER BY id ASC LIMIT ?",
+            (chat_id, after_id, limit),
+        ).fetchall()
+    return [
+        ChatEvent(
+            id=row["id"],
+            chat_id=row["chat_id"],
+            role=row["role"],
+            content=row["content"],
+            created_at=str(row["created_at"]),
+        )
+        for row in rows
+    ]

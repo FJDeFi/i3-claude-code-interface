@@ -1,41 +1,51 @@
-const POLL_INTERVAL_MS = 1000;
-
 const messagesEl = document.querySelector("#messages");
 const formEl = document.querySelector("#prompt-form");
 const inputEl = document.querySelector("#prompt-input");
 const sendButtonEl = document.querySelector("#send-button");
 const clearButtonEl = document.querySelector("#clear-chat");
+const newChatButtonEl = document.querySelector("#new-chat");
 const helperTextEl = document.querySelector("#helper-text");
 const serverStatusEl = document.querySelector("#server-status");
 const statusDotEl = document.querySelector("#status-dot");
 
-function addMessage(role, text, meta = "") {
+const STORAGE_KEY = "claude-tmux-chat-id";
+
+let state = {
+  chatId: null,
+  eventSource: null,
+  assistantNode: null,
+  assistantBuffer: "",
+  lastEventId: 0,
+};
+
+function setConnectionStatus(kind, label) {
+  statusDotEl.classList.remove("online", "offline");
+  if (kind === "online") statusDotEl.classList.add("online");
+  if (kind === "offline") statusDotEl.classList.add("offline");
+  serverStatusEl.textContent = label;
+}
+
+function appendMessage(role, text) {
   const article = document.createElement("article");
   article.className = `message ${role}`;
 
   const avatar = document.createElement("div");
   avatar.className = "avatar";
-  avatar.textContent = role === "user" ? "You" : "AI";
+  avatar.textContent = role === "user" ? "You" : role === "status" ? "···" : "AI";
 
   const bubble = document.createElement("div");
   bubble.className = "bubble";
 
   const label = document.createElement("p");
   label.className = "message-label";
-  label.textContent = role === "user" ? "You" : "Assistant";
+  label.textContent =
+    role === "user" ? "You" : role === "status" ? "System" : "Assistant";
 
-  const body = document.createElement("p");
+  const body = document.createElement("pre");
+  body.className = "message-body";
   body.textContent = text;
 
   bubble.append(label, body);
-
-  if (meta) {
-    const metaLine = document.createElement("p");
-    metaLine.className = "helper-text";
-    metaLine.textContent = meta;
-    bubble.append(metaLine);
-  }
-
   article.append(avatar, bubble);
   messagesEl.append(article);
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -43,114 +53,175 @@ function addMessage(role, text, meta = "") {
   return { article, body };
 }
 
-function setComposerState(isBusy, message) {
-  sendButtonEl.disabled = isBusy;
-  inputEl.disabled = isBusy;
-  helperTextEl.textContent = message;
-}
-
-function setConnectionStatus(kind, label) {
-  statusDotEl.classList.remove("online", "offline");
-  if (kind === "online") {
-    statusDotEl.classList.add("online");
-  } else if (kind === "offline") {
-    statusDotEl.classList.add("offline");
+function ensureAssistantNode() {
+  if (!state.assistantNode) {
+    state.assistantNode = appendMessage("assistant", "");
+    state.assistantBuffer = "";
   }
-  serverStatusEl.textContent = label;
+  return state.assistantNode;
 }
 
-async function pollJob(jobId, responseNode) {
-  while (true) {
-    const response = await fetch(`/result/${jobId}`);
+function finalizeAssistantNode() {
+  state.assistantNode = null;
+  state.assistantBuffer = "";
+}
 
-    if (!response.ok) {
-      throw new Error(`Result lookup failed with status ${response.status}.`);
-    }
-
-    const payload = await response.json();
-    const status = payload.status;
-
-    if (status === "done") {
-      responseNode.textContent = payload.result || "No result returned.";
-      setConnectionStatus("online", "Connected");
-      return;
-    }
-
-    if (status === "failed") {
-      responseNode.textContent = payload.result || "Job failed without details.";
-      setConnectionStatus("offline", "Last job failed");
-      return;
-    }
-
-    responseNode.textContent =
-      status === "running"
-        ? "The worker is processing your request..."
-        : "Prompt submitted. Waiting for a worker to claim the job...";
-
-    await new Promise((resolve) => window.setTimeout(resolve, POLL_INTERVAL_MS));
+function closeStream() {
+  if (state.eventSource) {
+    state.eventSource.close();
+    state.eventSource = null;
   }
 }
 
-async function checkServer() {
-  try {
-    const response = await fetch("/");
-    if (!response.ok) {
-      throw new Error(`Unexpected status ${response.status}`);
+function openStream(chatId) {
+  closeStream();
+  const url = `/chats/${chatId}/events?after_id=${state.lastEventId || 0}`;
+  const source = new EventSource(url);
+  state.eventSource = source;
+
+  const handleEvent = (role) => (event) => {
+    let payload;
+    try {
+      payload = JSON.parse(event.data);
+    } catch {
+      return;
     }
-    setConnectionStatus("online", "Connected");
-  } catch (error) {
-    console.error(error);
-    setConnectionStatus("offline", "Unable to reach server");
+
+    if (payload.id) state.lastEventId = payload.id;
+
+    if (role === "user") {
+      finalizeAssistantNode();
+      appendMessage("user", payload.content);
+    } else if (role === "assistant") {
+      const node = ensureAssistantNode();
+      state.assistantBuffer += payload.content;
+      node.body.textContent = state.assistantBuffer;
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    } else if (role === "status") {
+      finalizeAssistantNode();
+      appendMessage("status", payload.content);
+    } else if (role === "error") {
+      finalizeAssistantNode();
+      appendMessage("status", `error: ${payload.content}`);
+    }
+  };
+
+  source.addEventListener("user", handleEvent("user"));
+  source.addEventListener("assistant", handleEvent("assistant"));
+  source.addEventListener("status", handleEvent("status"));
+  source.addEventListener("error", handleEvent("error"));
+  source.addEventListener("end", () => {
+    setConnectionStatus("offline", "Chat ended");
+    closeStream();
+  });
+
+  source.onopen = () => setConnectionStatus("online", `chat ${chatId}`);
+  source.onerror = () => setConnectionStatus("offline", "Reconnecting...");
+}
+
+async function createChat() {
+  setConnectionStatus(null, "Starting tmux session...");
+  const response = await fetch("/chats", { method: "POST" });
+  if (!response.ok) {
+    setConnectionStatus("offline", "Failed to create chat");
+    throw new Error(`Failed to create chat: ${response.status}`);
+  }
+  const payload = await response.json();
+  state.chatId = payload.chat_id;
+  state.lastEventId = 0;
+  finalizeAssistantNode();
+  localStorage.setItem(STORAGE_KEY, state.chatId);
+  openStream(state.chatId);
+  return state.chatId;
+}
+
+async function ensureChat() {
+  if (state.chatId) return state.chatId;
+  return await createChat();
+}
+
+async function sendPrompt(text) {
+  const chatId = await ensureChat();
+  const response = await fetch(`/chats/${chatId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => ({}));
+    throw new Error(errorPayload.detail || `send failed (${response.status})`);
   }
 }
 
 formEl.addEventListener("submit", async (event) => {
   event.preventDefault();
-
-  const prompt = inputEl.value.trim();
-  if (!prompt) {
-    return;
-  }
-
-  addMessage("user", prompt);
-  const pendingMessage = addMessage(
-    "assistant",
-    "Submitting your prompt...",
-    "A job will be created on the server."
-  );
+  const text = inputEl.value.trim();
+  if (!text) return;
 
   inputEl.value = "";
-  setComposerState(true, "Submitting prompt and waiting for the server...");
+  sendButtonEl.disabled = true;
+  helperTextEl.textContent = "Injecting prompt into tmux...";
 
   try {
-    const response = await fetch(`/prompt?prompt=${encodeURIComponent(prompt)}`, {
-      method: "POST",
-    });
-
-    if (!response.ok) {
-      throw new Error(`Submit failed with status ${response.status}.`);
-    }
-
-    const payload = await response.json();
-    pendingMessage.body.textContent = "Job accepted. Polling for the result...";
-    await pollJob(payload.job_id, pendingMessage.body);
-  } catch (error) {
-    console.error(error);
-    pendingMessage.body.textContent =
-      error instanceof Error ? error.message : "An unexpected error occurred.";
-    setConnectionStatus("offline", "Request failed");
+    await sendPrompt(text);
+    helperTextEl.textContent = "Output streams live from tmux via SSE.";
+  } catch (err) {
+    appendMessage("status", err.message || "Unknown error");
   } finally {
-    setComposerState(false, "The UI will poll for completion automatically.");
+    sendButtonEl.disabled = false;
     inputEl.focus();
+  }
+});
+
+newChatButtonEl.addEventListener("click", async () => {
+  messagesEl.innerHTML = "";
+  try {
+    await createChat();
+    appendMessage("status", `New tmux chat ${state.chatId} created`);
+  } catch (err) {
+    appendMessage("status", err.message || "Failed to start chat");
   }
 });
 
 clearButtonEl.addEventListener("click", () => {
   messagesEl.innerHTML = "";
-  addMessage(
-    "assistant",
-    "Conversation cleared. Send another prompt when you're ready."
-  );
+  finalizeAssistantNode();
 });
 
-checkServer();
+async function resumeChatIfAny() {
+  const existing = localStorage.getItem(STORAGE_KEY);
+  if (!existing) {
+    setConnectionStatus(null, "Press 'New chat' to begin");
+    return;
+  }
+  try {
+    const response = await fetch(`/chats/${existing}`);
+    if (!response.ok) {
+      localStorage.removeItem(STORAGE_KEY);
+      setConnectionStatus(null, "Press 'New chat' to begin");
+      return;
+    }
+    const payload = await response.json();
+    state.chatId = existing;
+    (payload.events || []).forEach((ev) => {
+      state.lastEventId = Math.max(state.lastEventId, ev.id);
+      if (ev.role === "user") appendMessage("user", ev.content);
+      else if (ev.role === "assistant") {
+        const node = ensureAssistantNode();
+        state.assistantBuffer += ev.content;
+        node.body.textContent = state.assistantBuffer;
+      } else if (ev.role === "status") appendMessage("status", ev.content);
+    });
+    finalizeAssistantNode();
+    if (payload.chat?.status === "running") {
+      openStream(existing);
+    } else {
+      setConnectionStatus("offline", "Previous chat ended");
+    }
+  } catch (err) {
+    console.error(err);
+    setConnectionStatus("offline", "Failed to resume chat");
+  }
+}
+
+resumeChatIfAny();

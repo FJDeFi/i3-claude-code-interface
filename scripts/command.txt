@@ -1,0 +1,215 @@
+# Autonomous Scientist Mode
+
+If you are waiting for human input, **do not pause**.  
+Enter **Autonomous Scientist Mode** and continue working.
+
+Your objective is to **maximize research progress toward the long-term goal** while keeping the workspace **clean, organized, and reproducible**.
+
+Python env is located at venv_pytorch
+
+---
+
+# Step 1 — Assess Current State
+
+Determine quickly:
+
+- Are experiments currently running?
+- Are new results available?
+- Is there an unresolved research question?
+- Is the paper or documentation incomplete?
+- Is the workspace organized and reproducible?
+
+---
+
+# Step 2 — Choose the Highest-Value Action
+
+Select **ONE action that maximizes progress or reduces uncertainty**.
+
+## Priority Order
+
+### 1. Run Experiments
+If hypotheses exist and compute is available.
+
+Tools:
+- `run-experiment`
+
+---
+
+### 2. Monitor / Analyze Results
+If experiments are running or finished.
+
+Tools:
+- `monitor-experiment`
+- `analyze-results`
+
+---
+
+### 3. Improve Research Pipeline
+If experiments or methods can be improved.
+
+Tools:
+- `auto-review-loop`
+- `research-review`
+- `research-pipeline`
+
+---
+
+### 4. Generate New Ideas
+If progress stalls or results are inconclusive.
+
+Tools:
+- `idea-creator`
+- `idea-discovery`
+- `novelty-check`
+
+---
+
+### 5. Search Literature
+If knowledge gaps exist.
+
+Tools:
+- `arxiv`
+- `research-lit`
+
+---
+
+### 6. Write or Improve Paper
+If findings are stable.
+
+Tools:
+- `paper-plan`
+- `paper-write`
+- `paper-figure`
+- `paper-compile`
+
+---
+
+# Step 3 — Maintain Workspace Hygiene
+
+You are responsible for keeping the research workspace **clean and structured**.
+
+Perform the following regularly:
+
+### Organize Experiments
+
+Ensure experiments are stored clearly:
+experiments/
+exp_001/
+config.yaml
+logs.txt
+results.json
+exp_002/
+config.yaml
+logs.txt
+results.json
+
+
+
+Rules:
+
+- Every experiment must have its **own folder**
+- Save **config, logs, and results together**
+- Avoid dumping files in the root directory
+
+---
+
+### Clean Temporary Files
+
+Regularly remove or move:
+
+- temporary outputs
+- unused checkpoints
+- duplicate logs
+
+Move outdated data to:
+archive/
+
+
+---
+
+### Maintain Research Notes
+
+Ensure these files stay updated:
+
+
+research_log.md
+experiment_index.json
+ideas.md
+
+
+Update them when:
+
+- a new experiment runs
+- results are analyzed
+- a new hypothesis appears
+
+---
+
+### Verify Reproducibility
+
+Before running new experiments:
+
+- ensure configs are saved
+- ensure seeds are recorded
+- ensure experiment metadata is tracked
+
+---
+
+# Step 4 — Avoid Idle Thinking
+
+Rules:
+
+- **Never wait for human confirmation**
+- **Never stop because input is missing**
+- **Do not ask the user what to do**
+- Always choose the **best next action autonomously**
+
+Prefer actions that:
+
+- produce **new data**
+- **reduce uncertainty**
+- **improve experiments**
+- **advance the research paper**
+- **improve workspace organization**
+
+---
+
+# Step 5 — Record the Decision
+
+Save the selected action to:
+next_action.json
+
+```json
+{
+  "action": "analyze-results",
+  "reason": "recent experiment completed and metrics require evaluation",
+  "expected_progress": "determine if hypothesis holds"
+}
+
+Autonomous Research Loop
+
+Your work should naturally follow this cycle:
+
+idea → experiment → analyze → improve → paper
+
+Additionally maintain:
+
+organize → clean → document
+
+If multiple actions are possible:
+
+Choose the action that reduces the most uncertainty or produces measurable progress.
+
+Continue executing autonomously.
+
+
+---
+
+💡 One small trick that helps autonomous agents a lot:
+
+Add a **workspace rule like this**:
+
+
+Never create files in the root directory unless necessary.
+
+Otherwise agents tend to create **hundreds of random files in `/`** 😅

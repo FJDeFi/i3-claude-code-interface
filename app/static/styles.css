@@ -188,12 +188,38 @@ textarea {
 }
 
 .bubble {
-  max-width: min(76ch, 82%);
+  max-width: min(90ch, 90%);
   padding: 14px 16px;
   border-radius: 18px;
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.message-body {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message.status .avatar {
+  background: rgba(246, 199, 96, 0.14);
+  color: var(--warning);
+  border-color: rgba(246, 199, 96, 0.22);
+}
+
+.message.status .bubble {
+  background: rgba(246, 199, 96, 0.08);
+  border: 1px dashed rgba(246, 199, 96, 0.32);
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.panel-buttons {
+  display: flex;
+  gap: 8px;
 }
 
 .assistant .bubble {

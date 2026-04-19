@@ -11,17 +11,18 @@
       <section class="hero">
         <div>
           <p class="eyebrow">Web Client</p>
-          <h1>Talk to your server from the browser</h1>
+          <h1>Talk to Claude Code running in tmux</h1>
           <p class="hero-copy">
-            Submit prompts, watch job progress, and read results in a clean
-            chat-style interface.
+            Each chat gets its own tmux session running Claude Code. Prompts
+            are injected via <code>paste-buffer</code> and live output streams
+            back over Server-Sent Events.
           </p>
         </div>
         <div class="hero-status" id="connection-card">
           <span class="status-dot" id="status-dot"></span>
           <div>
-            <p class="status-label">Server status</p>
-            <p class="status-value" id="server-status">Checking connection...</p>
+            <p class="status-label">Session</p>
+            <p class="status-value" id="server-status">Not started</p>
           </div>
         </div>
       </section>
@@ -30,9 +31,15 @@
         <header class="panel-header">
           <div>
             <h2>Conversation</h2>
-            <p>Messages are sent to the FastAPI backend and resolved by the worker.</p>
+            <p>
+              Press "New chat" to spawn a tmux session running Claude Code, or
+              continue typing to send follow-up prompts in the existing one.
+            </p>
           </div>
-          <button class="ghost-button" id="clear-chat" type="button">Clear</button>
+          <div class="panel-buttons">
+            <button class="ghost-button" id="new-chat" type="button">New chat</button>
+            <button class="ghost-button" id="clear-chat" type="button">Clear view</button>
+          </div>
         </header>
 
         <div class="messages" id="messages">
@@ -41,8 +48,8 @@
             <div class="bubble">
               <p class="message-label">Assistant</p>
               <p>
-                Ready when you are. Type a prompt below to create a new job and
-                fetch the result from the server.
+                Ready when you are. Start a new chat to spawn a tmux session
+                running <code>claude</code>, then send a prompt below.
               </p>
             </div>
           </article>
@@ -54,16 +61,16 @@
             id="prompt-input"
             name="prompt"
             rows="4"
-            maxlength="4000"
-            placeholder="Ask the server anything..."
+            maxlength="8000"
+            placeholder="Ask Claude anything..."
             required
           ></textarea>
           <div class="composer-footer">
             <p class="helper-text" id="helper-text">
-              The UI will poll for completion automatically.
+              Output streams live from tmux via SSE.
             </p>
             <button class="primary-button" id="send-button" type="submit">
-              Send prompt
+              Send
             </button>
           </div>
         </form>
