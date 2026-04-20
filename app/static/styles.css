@@ -222,6 +222,29 @@ textarea {
   gap: 8px;
 }
 
+.api-key-row {
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.api-key-row input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(9, 15, 31, 0.92);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  outline: none;
+}
+
+.api-key-row input:focus {
+  border-color: rgba(103, 164, 255, 0.65);
+  box-shadow: 0 0 0 4px rgba(103, 164, 255, 0.12);
+}
+
 .assistant .bubble {
   background: var(--assistant);
   border: 1px solid rgba(148, 163, 184, 0.14);

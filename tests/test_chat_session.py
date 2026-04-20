@@ -37,12 +37,15 @@ def _wait_for(predicate, timeout=2.0, interval=0.05):
     return False
 
 
+TEST_API_KEY = "sk-ant-test-0123456789"
+
+
 def test_create_chat_spawns_session_and_records_status(
     tmp_path, fake_tmux, chat_module, tmux_module, state_module
 ):
     manager = _make_manager(tmp_path, fake_tmux, chat_module, tmux_module)
     try:
-        chat_id = manager.create_chat()
+        chat_id = manager.create_chat(anthropic_api_key=TEST_API_KEY)
 
         assert state_module.get_chat(chat_id) is not None
         assert manager.is_active(chat_id)
@@ -52,16 +55,57 @@ def test_create_chat_spawns_session_and_records_status(
         events = state_module.list_events_after(chat_id)
         roles = [e.role for e in events]
         assert "status" in roles
-        # Claude command should have been injected and echoed back into the log.
-        assistant_event_exists = _wait_for(
-            lambda: any(
-                e.role == "assistant"
-                for e in state_module.list_events_after(chat_id)
-            )
-        )
-        assert assistant_event_exists
+        # The recorded "launched" status must not include the raw key.
+        for event in events:
+            assert TEST_API_KEY not in event.content
     finally:
         manager.shutdown()
+
+
+def test_create_chat_rejects_empty_key(
+    tmp_path, fake_tmux, chat_module, tmux_module
+):
+    manager = _make_manager(tmp_path, fake_tmux, chat_module, tmux_module)
+    try:
+        with pytest.raises(ValueError):
+            manager.create_chat(anthropic_api_key="")
+        with pytest.raises(ValueError):
+            manager.create_chat(anthropic_api_key="   ")
+    finally:
+        manager.shutdown()
+
+
+def test_create_chat_passes_api_key_as_tmux_env(
+    tmp_path, fake_tmux, chat_module, tmux_module, state_module
+):
+    manager = _make_manager(tmp_path, fake_tmux, chat_module, tmux_module)
+    try:
+        chat_id = manager.create_chat(anthropic_api_key=TEST_API_KEY)
+        session_name = state_module.get_chat(chat_id).tmux_session
+
+        new_session_call = next(
+            call for call in fake_tmux.calls
+            if "new-session" in call and session_name in call
+        )
+        # tmux received -e ANTHROPIC_API_KEY=<key>
+        assert "-e" in new_session_call
+        env_arg_idx = new_session_call.index("-e") + 1
+        assert new_session_call[env_arg_idx] == f"ANTHROPIC_API_KEY={TEST_API_KEY}"
+
+        # Internal accessor round-trips the key for the chat lifetime.
+        assert state_module.get_chat_api_key(chat_id) == TEST_API_KEY
+    finally:
+        manager.shutdown()
+
+
+def test_stop_chat_clears_stored_api_key(
+    tmp_path, fake_tmux, chat_module, tmux_module, state_module
+):
+    manager = _make_manager(tmp_path, fake_tmux, chat_module, tmux_module)
+    chat_id = manager.create_chat(anthropic_api_key=TEST_API_KEY)
+    assert state_module.get_chat_api_key(chat_id) == TEST_API_KEY
+    manager.stop_chat(chat_id)
+    assert state_module.get_chat_api_key(chat_id) is None
 
 
 def test_send_message_injects_and_streams_output(
@@ -69,7 +113,7 @@ def test_send_message_injects_and_streams_output(
 ):
     manager = _make_manager(tmp_path, fake_tmux, chat_module, tmux_module)
     try:
-        chat_id = manager.create_chat()
+        chat_id = manager.create_chat(anthropic_api_key=TEST_API_KEY)
         session_name = state_module.get_chat(chat_id).tmux_session
 
         # Simulate Claude replying in the pane asynchronously.
@@ -114,7 +158,7 @@ def test_stop_chat_is_idempotent_and_kills_session(
     tmp_path, fake_tmux, chat_module, tmux_module, state_module
 ):
     manager = _make_manager(tmp_path, fake_tmux, chat_module, tmux_module)
-    chat_id = manager.create_chat()
+    chat_id = manager.create_chat(anthropic_api_key=TEST_API_KEY)
     session_name = state_module.get_chat(chat_id).tmux_session
 
     manager.stop_chat(chat_id)
@@ -138,7 +182,7 @@ def test_concurrent_sends_are_serialized_per_chat(
 ):
     manager = _make_manager(tmp_path, fake_tmux, chat_module, tmux_module)
     try:
-        chat_id = manager.create_chat()
+        chat_id = manager.create_chat(anthropic_api_key=TEST_API_KEY)
         import threading
 
         def send(text):

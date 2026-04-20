@@ -9,9 +9,21 @@ def test_chat_lifecycle(state_module):
     assert chat is not None
     assert chat.tmux_session == "sess-abc"
     assert chat.status == "running"
+    # Public Chat model must never expose the stored API key.
+    assert not hasattr(chat, "anthropic_api_key")
 
     state_module.update_chat_status("abc", "stopped")
     assert state_module.get_chat("abc").status == "stopped"
+
+
+def test_api_key_round_trip_and_clear(state_module):
+    state_module.insert_chat("xyz", "sess-xyz", "/tmp/xyz.log", anthropic_api_key="sk-ant-test")
+    assert state_module.get_chat_api_key("xyz") == "sk-ant-test"
+    state_module.clear_chat_api_key("xyz")
+    assert state_module.get_chat_api_key("xyz") is None
+    # Public chat record is unaffected.
+    chat = state_module.get_chat("xyz")
+    assert chat.tmux_session == "sess-xyz"
 
 
 def test_append_and_list_events(state_module):

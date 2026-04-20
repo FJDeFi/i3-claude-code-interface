@@ -92,6 +92,30 @@ def test_start_raises_when_runner_fails(tmp_path, tmux_module):
         tmux.start()
 
 
+def test_start_passes_env_via_new_session_flag(tmp_path, fake_tmux, tmux_module):
+    log_path = tmp_path / "session.log"
+    tmux = tmux_module.TmuxSession(
+        session_name="demo",
+        log_path=log_path,
+        runner=fake_tmux.run,
+        paste_delay=0.0,
+    )
+    tmux.start(command="claude", env={"ANTHROPIC_API_KEY": "sk-test"})
+
+    new_session_call = next(
+        call for call in fake_tmux.calls
+        if "new-session" in call
+    )
+    assert "-e" in new_session_call
+    idx = new_session_call.index("-e") + 1
+    assert new_session_call[idx] == "ANTHROPIC_API_KEY=sk-test"
+    # The key must not be pasted as terminal input (no load-buffer call yet).
+    verbs = [c[1] for c in fake_tmux.calls]
+    assert "load-buffer" not in verbs
+    # The key must also not end up in the pane log because it was passed via -e.
+    assert "sk-test" not in log_path.read_text()
+
+
 def test_capture_pane_returns_log_contents(tmp_path, fake_tmux, tmux_module):
     log_path = tmp_path / "session.log"
     tmux = tmux_module.TmuxSession(

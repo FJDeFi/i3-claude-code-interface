@@ -19,7 +19,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 
 RunnerResult = subprocess.CompletedProcess
@@ -68,13 +68,19 @@ class TmuxSession:
         *,
         width: int = 220,
         height: int = 50,
+        env: Optional[Dict[str, str]] = None,
     ) -> None:
-        """Create the session and start piping the pane into ``log_path``."""
+        """Create the session and start piping the pane into ``log_path``.
+
+        ``env`` entries are passed to ``tmux new-session`` as ``-e KEY=VALUE``
+        pairs so secrets are set on the pane's environment *without* ever being
+        pasted as visible terminal input.
+        """
 
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.log_path.write_bytes(b"")
 
-        new_session_args = [
+        new_session_args: List[str] = [
             "new-session",
             "-d",
             "-s",
@@ -84,6 +90,9 @@ class TmuxSession:
             "-y",
             str(height),
         ]
+        if env:
+            for key, value in env.items():
+                new_session_args += ["-e", f"{key}={value}"]
         if command:
             new_session_args.append(command)
 

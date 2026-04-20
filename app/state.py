@@ -45,6 +45,7 @@ def init_db() -> None:
                 tmux_session TEXT NOT NULL,
                 log_path TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'running',
+                anthropic_api_key TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -62,6 +63,11 @@ def init_db() -> None:
             """
         )
 
+        # Backfill anthropic_api_key column for pre-existing databases.
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(chats)")}
+        if "anthropic_api_key" not in columns:
+            conn.execute("ALTER TABLE chats ADD COLUMN anthropic_api_key TEXT")
+
 
 init_db()
 
@@ -69,12 +75,17 @@ init_db()
 # --------------------------------------------------------------------- chats
 
 
-def insert_chat(chat_id: str, tmux_session: str, log_path: str) -> Chat:
+def insert_chat(
+    chat_id: str,
+    tmux_session: str,
+    log_path: str,
+    anthropic_api_key: Optional[str] = None,
+) -> Chat:
     with _write_lock, closing(_get_conn()) as conn:
         conn.execute(
-            "INSERT INTO chats (id, tmux_session, log_path, status)"
-            " VALUES (?, ?, ?, 'running')",
-            (chat_id, tmux_session, log_path),
+            "INSERT INTO chats (id, tmux_session, log_path, status, anthropic_api_key)"
+            " VALUES (?, ?, ?, 'running', ?)",
+            (chat_id, tmux_session, log_path, anthropic_api_key),
         )
     return Chat(
         id=chat_id,
@@ -82,6 +93,25 @@ def insert_chat(chat_id: str, tmux_session: str, log_path: str) -> Chat:
         log_path=log_path,
         status="running",
     )
+
+
+def get_chat_api_key(chat_id: str) -> Optional[str]:
+    """Internal accessor for a chat's stored API key. NEVER expose via HTTP."""
+    with closing(_get_conn()) as conn:
+        row = conn.execute(
+            "SELECT anthropic_api_key FROM chats WHERE id = ?", (chat_id,)
+        ).fetchone()
+    if not row:
+        return None
+    return row["anthropic_api_key"]
+
+
+def clear_chat_api_key(chat_id: str) -> None:
+    with _write_lock, closing(_get_conn()) as conn:
+        conn.execute(
+            "UPDATE chats SET anthropic_api_key = NULL WHERE id = ?",
+            (chat_id,),
+        )
 
 
 def get_chat(chat_id: str) -> Optional[Chat]:

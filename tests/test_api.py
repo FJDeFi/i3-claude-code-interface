@@ -12,6 +12,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 
+TEST_API_KEY = "sk-ant-test-0123456789"
+
+
+def _create_chat(http):
+    response = http.post("/chats", json={"anthropic_api_key": TEST_API_KEY})
+    assert response.status_code == 200, response.text
+    return response.json()["chat_id"]
+
+
 def _wait_for(predicate, timeout=2.0, interval=0.05):
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -62,22 +71,53 @@ def test_health_endpoint(client):
 
 def test_create_chat_returns_id(client, state_module):
     http, _, _ = client
-    response = http.post("/chats")
-    assert response.status_code == 200
-    chat_id = response.json()["chat_id"]
+    chat_id = _create_chat(http)
     assert state_module.get_chat(chat_id) is not None
+
+
+def test_create_chat_requires_api_key(client):
+    http, _, _ = client
+    response = http.post("/chats", json={"anthropic_api_key": ""})
+    assert response.status_code == 400
+    response = http.post("/chats", json={"anthropic_api_key": "   "})
+    assert response.status_code == 400
+
+
+def test_create_chat_rejects_missing_body(client):
+    http, _, _ = client
+    response = http.post("/chats")
+    assert response.status_code in (400, 422)
+
+
+def test_create_chat_response_does_not_contain_api_key(client):
+    http, _, _ = client
+    response = http.post("/chats", json={"anthropic_api_key": TEST_API_KEY})
+    assert response.status_code == 200
+    assert TEST_API_KEY not in response.text
+
+
+def test_api_key_never_appears_in_snapshot_or_events(client, state_module):
+    http, _, _ = client
+    chat_id = _create_chat(http)
+
+    snapshot = http.get(f"/chats/{chat_id}")
+    assert TEST_API_KEY not in snapshot.text
+
+    events = state_module.list_events_after(chat_id)
+    for event in events:
+        assert TEST_API_KEY not in event.content
 
 
 def test_send_message_requires_text(client):
     http, _, _ = client
-    chat_id = http.post("/chats").json()["chat_id"]
+    chat_id = _create_chat(http)
     response = http.post(f"/chats/{chat_id}/messages", json={"text": "  "})
     assert response.status_code == 400
 
 
 def test_send_message_persists_and_triggers_output(client, state_module):
     http, manager, fake_tmux = client
-    chat_id = http.post("/chats").json()["chat_id"]
+    chat_id = _create_chat(http)
     session_name = state_module.get_chat(chat_id).tmux_session
 
     # Simulate Claude output appearing on the pane.
@@ -109,7 +149,7 @@ def test_send_message_unknown_chat_returns_404(client):
 
 def test_chat_snapshot_returns_events(client, state_module):
     http, _, _ = client
-    chat_id = http.post("/chats").json()["chat_id"]
+    chat_id = _create_chat(http)
     http.post(f"/chats/{chat_id}/messages", json={"text": "hi"})
 
     assert _wait_for(
@@ -128,7 +168,7 @@ def test_chat_snapshot_returns_events(client, state_module):
 
 def test_delete_chat_stops_session(client, state_module):
     http, manager, fake_tmux = client
-    chat_id = http.post("/chats").json()["chat_id"]
+    chat_id = _create_chat(http)
     session_name = state_module.get_chat(chat_id).tmux_session
 
     response = http.delete(f"/chats/{chat_id}")
@@ -141,7 +181,7 @@ def test_delete_chat_stops_session(client, state_module):
 
 def test_sse_stream_emits_end_when_chat_stops(client, state_module):
     http, manager, fake_tmux = client
-    chat_id = http.post("/chats").json()["chat_id"]
+    chat_id = _create_chat(http)
 
     # Stop chat *before* opening the stream so the endpoint sees inactive.
     manager.stop_chat(chat_id)
@@ -158,7 +198,7 @@ def test_sse_stream_emits_end_when_chat_stops(client, state_module):
 
 def test_sse_stream_delivers_events(client, state_module):
     http, manager, fake_tmux = client
-    chat_id = http.post("/chats").json()["chat_id"]
+    chat_id = _create_chat(http)
     session_name = state_module.get_chat(chat_id).tmux_session
 
     # Write pane content then stop to terminate the stream quickly.

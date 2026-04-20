@@ -23,6 +23,7 @@ from typing import Callable, Dict, Optional
 
 from .state import (
     append_chat_event,
+    clear_chat_api_key,
     get_chat,
     insert_chat,
     update_chat_status,
@@ -88,28 +89,40 @@ class ChatManager:
 
     # ------------------------------------------------------------------ API
 
-    def create_chat(self, *, initial_command: Optional[str] = None) -> str:
+    def create_chat(self, *, anthropic_api_key: str) -> str:
+        """Create a new tmux-backed chat authenticated by ``anthropic_api_key``.
+
+        The key is handed to tmux via ``new-session -e ANTHROPIC_API_KEY=...``
+        so it is only present in the pane's environment, never pasted as
+        terminal input and never echoed into the pane's log. The key is also
+        stored in SQLite scoped to this chat so the server could, if needed,
+        restart the pane later — but it is never returned via any HTTP route.
+        """
+
+        if not anthropic_api_key or not anthropic_api_key.strip():
+            raise ValueError("anthropic_api_key must not be empty")
+
+        api_key = anthropic_api_key.strip()
+
         chat_id = uuid.uuid4().hex[:12]
         session_name = f"{self.prefix}{chat_id}"
         log_path = self.log_dir / f"{session_name}.log"
 
         tmux = self.tmux_factory(session_name, log_path)
-        tmux.start()
+        tmux.start(
+            command=self.claude_cmd,
+            env={"ANTHROPIC_API_KEY": api_key},
+        )
 
-        insert_chat(chat_id, session_name, str(log_path))
+        insert_chat(chat_id, session_name, str(log_path), anthropic_api_key=api_key)
         append_chat_event(chat_id, "status", "session-started")
+        append_chat_event(chat_id, "status", "launched:claude")
 
         runtime = ChatRuntime(chat_id=chat_id, tmux=tmux, log_path=log_path)
         with self._global_lock:
             self._chats[chat_id] = runtime
 
         self._start_tail(runtime)
-
-        command_to_run = initial_command if initial_command is not None else self.claude_cmd
-        if command_to_run:
-            tmux.send_text(command_to_run)
-            append_chat_event(chat_id, "status", f"launched:{command_to_run}")
-
         return chat_id
 
     def send_message(self, chat_id: str, text: str) -> None:
@@ -131,6 +144,7 @@ class ChatManager:
         except Exception as exc:  # pragma: no cover - best effort cleanup
             append_chat_event(chat_id, "error", f"kill failed: {exc}")
         update_chat_status(chat_id, "stopped")
+        clear_chat_api_key(chat_id)
         append_chat_event(chat_id, "status", "stopped")
 
     def is_active(self, chat_id: str) -> bool:

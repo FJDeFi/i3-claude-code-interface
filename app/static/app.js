@@ -7,6 +7,7 @@ const newChatButtonEl = document.querySelector("#new-chat");
 const helperTextEl = document.querySelector("#helper-text");
 const serverStatusEl = document.querySelector("#server-status");
 const statusDotEl = document.querySelector("#status-dot");
+const apiKeyInputEl = document.querySelector("#api-key-input");
 
 const STORAGE_KEY = "claude-tmux-chat-id";
 
@@ -120,17 +121,37 @@ function openStream(chatId) {
 }
 
 async function createChat() {
+  const apiKey = (apiKeyInputEl.value || "").trim();
+  if (!apiKey) {
+    apiKeyInputEl.focus();
+    throw new Error("Please provide an ANTHROPIC_API_KEY before starting a chat.");
+  }
+
   setConnectionStatus(null, "Starting tmux session...");
-  const response = await fetch("/chats", { method: "POST" });
+  const response = await fetch("/chats", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ anthropic_api_key: apiKey }),
+  });
   if (!response.ok) {
     setConnectionStatus("offline", "Failed to create chat");
-    throw new Error(`Failed to create chat: ${response.status}`);
+    let detail = response.status;
+    try {
+      const payload = await response.json();
+      if (payload?.detail) detail = payload.detail;
+    } catch {
+      // ignore
+    }
+    throw new Error(`Failed to create chat: ${detail}`);
   }
   const payload = await response.json();
   state.chatId = payload.chat_id;
   state.lastEventId = 0;
   finalizeAssistantNode();
   localStorage.setItem(STORAGE_KEY, state.chatId);
+  // Clear the key from the DOM once the chat is created; the server now
+  // owns it for the chat lifetime and the browser no longer needs it.
+  apiKeyInputEl.value = "";
   openStream(state.chatId);
   return state.chatId;
 }

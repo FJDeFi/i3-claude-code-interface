@@ -26,5 +26,9 @@ class CreateChatResponse(BaseModel):
     chat_id: str
 
 
+class CreateChatRequest(BaseModel):
+    anthropic_api_key: str
+
+
 class SendMessageRequest(BaseModel):
     text: str

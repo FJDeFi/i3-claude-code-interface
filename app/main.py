@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .chat_session import ChatManager
-from .models import SendMessageRequest
+from .models import CreateChatRequest, SendMessageRequest
 from .state import get_chat, list_events_after
 
 
@@ -46,8 +46,16 @@ def health() -> dict:
 
 
 @app.post("/chats")
-def create_chat() -> dict:
-    chat_id = _manager().create_chat()
+def create_chat(body: CreateChatRequest) -> dict:
+    key = (body.anthropic_api_key or "").strip()
+    if not key:
+        raise HTTPException(
+            status_code=400, detail="anthropic_api_key must not be empty"
+        )
+    try:
+        chat_id = _manager().create_chat(anthropic_api_key=key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"chat_id": chat_id}
 
 

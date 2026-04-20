@@ -47,7 +47,11 @@ flowchart TD
   event log with autoincrementing `id`). `list_events_after(chat_id,
   after_id)` lets the SSE endpoint resume after disconnects.
 - `app/main.py` — FastAPI endpoints:
-  - `POST /chats` — create a chat + tmux session.
+  - `POST /chats` — create a chat + tmux session. Requires a JSON body
+    `{ "anthropic_api_key": "sk-ant-..." }`; the key is passed to
+    `tmux new-session -e ANTHROPIC_API_KEY=...` so Claude Code launches
+    authenticated and the key is never pasted into the pane or echoed
+    into the streamed transcript.
   - `POST /chats/{id}/messages` — inject text into the pane.
   - `GET /chats/{id}/events` — SSE stream (`id:`, `event:`, `data:`) of new
     events, replaying from `?after_id=` for reconnects. Emits an `end`
@@ -190,12 +194,13 @@ but note the caveats at the end of this section.
     .venv/bin/pip install -r requirements.txt
     ```
 
-    Configure Claude Code once as the runtime user so the tmux session
-    picks up the auth:
-
-    ```bash
-    claude login   # follow the device flow
-    ```
+    **No `claude login` on the VM is required.** Each chat supplies its
+    own `ANTHROPIC_API_KEY` from the browser, and the server passes it to
+    the tmux session using
+    `tmux new-session -e ANTHROPIC_API_KEY=...`, so Claude Code boots
+    with API-key auth and never enters the interactive login flow. The
+    key is stored in SQLite only for the chat lifetime and is wiped when
+    the chat is stopped/deleted.
 
 4. **Systemd unit** — `/etc/systemd/system/claude-bridge.service`:
 

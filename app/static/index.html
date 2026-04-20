@@ -32,8 +32,9 @@
           <div>
             <h2>Conversation</h2>
             <p>
-              Press "New chat" to spawn a tmux session running Claude Code, or
-              continue typing to send follow-up prompts in the existing one.
+              Provide an <code>ANTHROPIC_API_KEY</code> and press "New chat" to
+              spawn a tmux session running Claude Code with that key, or keep
+              typing to send follow-up prompts in the existing one.
             </p>
           </div>
           <div class="panel-buttons">
@@ -41,6 +42,21 @@
             <button class="ghost-button" id="clear-chat" type="button">Clear view</button>
           </div>
         </header>
+
+        <div class="api-key-row">
+          <label class="sr-only" for="api-key-input">Anthropic API key</label>
+          <input
+            id="api-key-input"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="ANTHROPIC_API_KEY (sk-ant-...)"
+          />
+          <p class="helper-text">
+            Used only to launch Claude Code for this chat. It is scoped to the
+            tmux session and never replayed into chat messages.
+          </p>
+        </div>
 
         <div class="messages" id="messages">
           <article class="message assistant">
