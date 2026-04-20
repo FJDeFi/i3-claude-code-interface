@@ -421,8 +421,8 @@ textarea {
   }
 
   .messages {
-    min-height: 50vh;
-    min-height: 50dvh;
+    min-height: 30vh;
+    min-height: 30dvh;
     max-height: none;
   }
 
