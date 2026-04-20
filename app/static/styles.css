@@ -271,9 +271,9 @@ textarea {
 .composer textarea {
   width: 100%;
   resize: vertical;
-  min-height: 110px;
-  padding: 16px 18px;
-  border-radius: 18px;
+  min-height: 64px;
+  padding: 10px 14px;
+  border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(9, 15, 31, 0.92);
   color: var(--text);
@@ -296,8 +296,8 @@ textarea {
 .primary-button,
 .ghost-button {
   border: 0;
-  border-radius: 14px;
-  padding: 12px 18px;
+  border-radius: 12px;
+  padding: 8px 16px;
   cursor: pointer;
   transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
 }
@@ -452,8 +452,7 @@ textarea {
 
   .primary-button,
   .ghost-button {
-    min-height: 44px;
-    min-width: 44px;
+    min-height: 36px;
     touch-action: manipulation;
     -webkit-tap-highlight-color: rgba(103, 164, 255, 0.22);
   }
@@ -461,12 +460,13 @@ textarea {
   .api-key-row input,
   .composer textarea {
     font-size: 16px;
-    line-height: 1.45;
+    line-height: 1.4;
   }
 
   .composer textarea {
     resize: none;
-    min-height: 72px;
+    min-height: 48px;
+    padding: 8px 12px;
   }
 
   .composer-footer,
@@ -500,11 +500,11 @@ textarea {
   }
 
   .composer textarea {
-    min-height: 56px;
-    padding: 10px 12px;
+    min-height: 44px;
+    padding: 8px 12px;
   }
 
   .panel-buttons .ghost-button {
-    padding: 8px 12px;
+    padding: 6px 12px;
   }
 }

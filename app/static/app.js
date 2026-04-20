@@ -4,7 +4,6 @@ const inputEl = document.querySelector("#prompt-input");
 const sendButtonEl = document.querySelector("#send-button");
 const clearButtonEl = document.querySelector("#clear-chat");
 const newChatButtonEl = document.querySelector("#new-chat");
-const helperTextEl = document.querySelector("#helper-text");
 const serverStatusEl = document.querySelector("#server-status");
 const statusDotEl = document.querySelector("#status-dot");
 const apiKeyInputEl = document.querySelector("#api-key-input");
@@ -181,11 +180,9 @@ formEl.addEventListener("submit", async (event) => {
 
   inputEl.value = "";
   sendButtonEl.disabled = true;
-  helperTextEl.textContent = "Injecting prompt into tmux...";
 
   try {
     await sendPrompt(text);
-    helperTextEl.textContent = "Output streams live from tmux via SSE.";
   } catch (err) {
     appendMessage("status", err.message || "Unknown error");
   } finally {
