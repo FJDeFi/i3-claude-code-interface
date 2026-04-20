@@ -271,9 +271,9 @@ textarea {
 .composer textarea {
   width: 100%;
   resize: vertical;
-  min-height: 64px;
-  padding: 10px 14px;
-  border-radius: 14px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   background: rgba(9, 15, 31, 0.92);
   color: var(--text);
@@ -465,8 +465,8 @@ textarea {
 
   .composer textarea {
     resize: none;
-    min-height: 48px;
-    padding: 8px 12px;
+    min-height: 36px;
+    padding: 6px 10px;
   }
 
   .composer-footer,
@@ -500,8 +500,8 @@ textarea {
   }
 
   .composer textarea {
-    min-height: 44px;
-    padding: 8px 12px;
+    min-height: 32px;
+    padding: 6px 10px;
   }
 
   .panel-buttons .ghost-button {
