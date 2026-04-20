@@ -47,7 +47,21 @@ def health() -> dict:
 
 @app.post("/chats")
 def create_chat(body: CreateChatRequest) -> dict:
+    # #region agent log
+    from .agent_debug import agent_log
+
     key = (body.anthropic_api_key or "").strip()
+    agent_log(
+        "main.py:create_chat",
+        "entry",
+        {
+            "key_len": len(key),
+            "has_newline": "\n" in key,
+            "has_cr": "\r" in key,
+        },
+        "H5",
+    )
+    # #endregion
     if not key:
         raise HTTPException(
             status_code=400, detail="anthropic_api_key must not be empty"
@@ -56,6 +70,27 @@ def create_chat(body: CreateChatRequest) -> dict:
         chat_id = _manager().create_chat(anthropic_api_key=key)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        # #region agent log
+        agent_log(
+            "main.py:create_chat",
+            "exception_before_500",
+            {
+                "exc_type": type(exc).__name__,
+                "exc_msg": str(exc)[:800],
+            },
+            "H1-H4",
+        )
+        # #endregion
+        raise
+    # #region agent log
+    agent_log(
+        "main.py:create_chat",
+        "success",
+        {"chat_id": chat_id},
+        "H0",
+    )
+    # #endregion
     return {"chat_id": chat_id}
 
 

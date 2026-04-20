@@ -97,6 +97,17 @@ class TmuxSession:
             new_session_args.append(command)
 
         result = self._tmux(*new_session_args)
+        # #region agent log
+        from .agent_debug import agent_log
+
+        err_tail = ((result.stderr or result.stdout) or "").strip()[:500]
+        agent_log(
+            "tmux_session.py:start",
+            "new_session_done",
+            {"returncode": result.returncode, "stderr_head": err_tail},
+            "H1",
+        )
+        # #endregion
         if result.returncode != 0:
             raise RuntimeError(
                 f"Failed to start tmux session {self.session_name!r}: "
@@ -114,6 +125,15 @@ class TmuxSession:
             f"{self.session_name}:0",
             pipe_command,
         )
+        # #region agent log
+        err_tail2 = ((result.stderr or result.stdout) or "").strip()[:500]
+        agent_log(
+            "tmux_session.py:start",
+            "pipe_pane_done",
+            {"returncode": result.returncode, "stderr_head": err_tail2},
+            "H2",
+        )
+        # #endregion
         if result.returncode != 0:
             raise RuntimeError(
                 f"Failed to enable pipe-pane for {self.session_name!r}: "

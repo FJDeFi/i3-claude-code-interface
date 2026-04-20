@@ -108,11 +108,50 @@ class ChatManager:
         session_name = f"{self.prefix}{chat_id}"
         log_path = self.log_dir / f"{session_name}.log"
 
+        # #region agent log
+        from .agent_debug import agent_log
+
+        agent_log(
+            "chat_session.py:create_chat",
+            "paths_ready",
+            {
+                "chat_id": chat_id,
+                "session_name": session_name,
+                "log_parent": str(log_path.parent),
+                "log_parent_exists": log_path.parent.exists(),
+                "claude_cmd": self.claude_cmd,
+            },
+            "H1-H4",
+        )
+        # #endregion
+
         tmux = self.tmux_factory(session_name, log_path)
+        # #region agent log
+        agent_log(
+            "chat_session.py:create_chat",
+            "before_tmux_start",
+            {},
+            "H1",
+        )
+        # #endregion
         tmux.start(
             command=self.claude_cmd,
             env={"ANTHROPIC_API_KEY": api_key},
         )
+        # #region agent log
+        agent_log(
+            "chat_session.py:create_chat",
+            "after_tmux_start",
+            {},
+            "H1-H2",
+        )
+        agent_log(
+            "chat_session.py:create_chat",
+            "before_insert_chat",
+            {},
+            "H3",
+        )
+        # #endregion
 
         insert_chat(chat_id, session_name, str(log_path), anthropic_api_key=api_key)
         append_chat_event(chat_id, "status", "session-started")
