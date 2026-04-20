@@ -336,46 +336,106 @@ textarea {
 }
 
 @media (max-width: 820px) {
+  html,
+  body {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
   .shell {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    min-height: 100vh;
-    min-height: 100dvh;
+    gap: 12px;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
     width: min(
       1080px,
       calc(100% - max(32px, env(safe-area-inset-left) + env(safe-area-inset-right)))
     );
     margin: 0 auto;
-    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
-      max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+      max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
 
   .hero {
     margin-bottom: 0;
     flex-shrink: 0;
+    gap: 8px;
+  }
+
+  .eyebrow {
+    display: none;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.1rem, 4.6vw, 1.5rem);
+    line-height: 1.15;
+  }
+
+  .hero-status {
+    min-width: 0;
+    padding: 6px 10px;
+    gap: 8px;
+    border-radius: 999px;
+    align-self: flex-start;
+  }
+
+  .hero-status .status-label {
+    display: none;
+  }
+
+  .hero-status .status-value {
+    margin-top: 0;
+    font-size: 0.85rem;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    box-shadow: 0 0 0 3px rgba(246, 199, 96, 0.14);
+  }
+
+  .status-dot.online {
+    box-shadow: 0 0 0 3px rgba(53, 211, 154, 0.14);
+  }
+
+  .status-dot.offline {
+    box-shadow: 0 0 0 3px rgba(255, 123, 138, 0.14);
   }
 
   .panel {
-    flex: 1;
+    flex: 1 1 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
+    padding: 16px;
   }
 
   .panel-header {
     flex-shrink: 0;
+    margin-bottom: 12px;
+  }
+
+  .panel-header h2 {
+    font-size: 1rem;
+    margin-bottom: 0;
   }
 
   .api-key-row {
     flex-shrink: 0;
+    margin-bottom: 10px;
+  }
+
+  .api-key-row input {
+    padding: 10px 12px;
   }
 
   .messages {
     flex: 1 1 0;
     min-height: 0;
     max-height: none;
-    min-height: 240px;
   }
 
   .hero-copy {
@@ -392,8 +452,12 @@ textarea {
 
   .composer {
     flex-shrink: 0;
-    margin-top: 12px;
-    padding-top: 16px;
+    margin-top: 10px;
+    padding-top: 10px;
+  }
+
+  .composer-footer {
+    margin-top: 8px;
   }
 
   .primary-button,
@@ -415,15 +479,17 @@ textarea {
     min-height: 72px;
   }
 
-  .hero,
   .composer-footer,
   .panel-header {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .hero-status {
-    min-width: 0;
+  .hero {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
   }
 
   .bubble {
@@ -433,49 +499,22 @@ textarea {
 
 @media (max-width: 480px) {
   .shell {
-    gap: 12px;
-    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
-      max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
-  }
-
-  .hero h1 {
-    font-size: clamp(1.45rem, 6.2vw, 2rem);
-    line-height: 1.08;
-  }
-
-  .hero-copy {
-    margin-top: 10px;
-    font-size: 0.94rem;
+    gap: 10px;
+    padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+      max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   }
 
   .panel {
-    padding: 16px;
+    padding: 14px;
     border-radius: 18px;
   }
 
-  .panel-header {
-    gap: 12px;
-    margin-bottom: 10px;
-  }
-
-  .api-key-row {
-    margin-bottom: 10px;
-  }
-
-  .hero-status {
-    padding: 12px 14px;
-  }
-
   .composer textarea {
-    min-height: 64px;
-    padding: 12px 14px;
-  }
-
-  .panel-buttons {
-    flex-direction: column;
+    min-height: 56px;
+    padding: 10px 12px;
   }
 
   .panel-buttons .ghost-button {
-    width: 100%;
+    padding: 8px 12px;
   }
 }
