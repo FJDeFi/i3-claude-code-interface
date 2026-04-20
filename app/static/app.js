@@ -245,4 +245,18 @@ async function resumeChatIfAny() {
   }
 }
 
+function scrollActivePromptIntoView() {
+  const active = document.activeElement;
+  if (active !== inputEl && active !== apiKeyInputEl) return;
+  requestAnimationFrame(() => {
+    active.scrollIntoView({ block: "nearest", inline: "nearest" });
+  });
+}
+
+inputEl.addEventListener("focus", scrollActivePromptIntoView);
+apiKeyInputEl.addEventListener("focus", scrollActivePromptIntoView);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", scrollActivePromptIntoView);
+}
+
 resumeChatIfAny();
