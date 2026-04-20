@@ -421,9 +421,11 @@ textarea {
   }
 
   .messages {
-    min-height: 30vh;
-    min-height: 30dvh;
-    max-height: none;
+    height: 60vh;
+    height: 60dvh;
+    min-height: 0;
+    max-height: 60vh;
+    max-height: 60dvh;
   }
 
   .hero-copy {
