@@ -87,10 +87,12 @@ def test_create_chat_passes_api_key_as_tmux_env(
             call for call in fake_tmux.calls
             if "new-session" in call and session_name in call
         )
-        # tmux received -e ANTHROPIC_API_KEY=<key>
-        assert "-e" in new_session_call
-        env_arg_idx = new_session_call.index("-e") + 1
-        assert new_session_call[env_arg_idx] == f"ANTHROPIC_API_KEY={TEST_API_KEY}"
+        # Pane env: bash -lc 'export ANTHROPIC_API_KEY=…; exec claude-fake'
+        assert "bash" in new_session_call
+        assert "-lc" in new_session_call
+        script = new_session_call[new_session_call.index("-lc") + 1]
+        assert "export ANTHROPIC_API_KEY=" in script
+        assert TEST_API_KEY in script
 
         # Internal accessor round-trips the key for the chat lifetime.
         assert state_module.get_chat_api_key(chat_id) == TEST_API_KEY

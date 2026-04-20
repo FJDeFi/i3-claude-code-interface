@@ -92,9 +92,9 @@ class ChatManager:
     def create_chat(self, *, anthropic_api_key: str) -> str:
         """Create a new tmux-backed chat authenticated by ``anthropic_api_key``.
 
-        The key is handed to tmux via ``new-session -e ANTHROPIC_API_KEY=...``
-        so it is only present in the pane's environment, never pasted as
-        terminal input and never echoed into the pane's log. The key is also
+        The key is set in the pane via a ``bash -lc 'export …; exec …'``
+        wrapper (compatible with tmux versions that lack ``new-session -e``).
+        It is never injected with ``send-keys``. The key is also
         stored in SQLite scoped to this chat so the server could, if needed,
         restart the pane later — but it is never returned via any HTTP route.
         """

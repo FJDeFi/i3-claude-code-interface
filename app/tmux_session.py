@@ -15,6 +15,7 @@ substitute a fake implementation without a real tmux binary.
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -72,9 +73,10 @@ class TmuxSession:
     ) -> None:
         """Create the session and start piping the pane into ``log_path``.
 
-        ``env`` entries are passed to ``tmux new-session`` as ``-e KEY=VALUE``
-        pairs so secrets are set on the pane's environment *without* ever being
-        pasted as visible terminal input.
+        Environment variables are applied inside a ``bash -lc`` wrapper so
+        sessions work on tmux builds that lack ``new-session -e`` (added in
+        tmux 3.2). Values are never pasted as interactive keystrokes; they
+        appear only in the child process argv like any other launcher.
         """
 
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -90,11 +92,7 @@ class TmuxSession:
             "-y",
             str(height),
         ]
-        if env:
-            for key, value in env.items():
-                new_session_args += ["-e", f"{key}={value}"]
-        if command:
-            new_session_args.append(command)
+        new_session_args.extend(self._new_session_tail(command, env))
 
         result = self._tmux(*new_session_args)
         # #region agent log
@@ -181,6 +179,25 @@ class TmuxSession:
         self._tmux("kill-session", "-t", self.session_name)
 
     # ---------------------------------------------------------------- helpers
+
+    @staticmethod
+    def _new_session_tail(
+        command: Optional[str], env: Optional[Dict[str, str]]
+    ) -> List[str]:
+        """Extra argv tokens after ``-y``: optional ``bash -lc`` or bare command."""
+
+        env = env or {}
+        if env:
+            exports = "; ".join(
+                f"export {key}={shlex.quote(value)}" for key, value in env.items()
+            )
+            argv = shlex.split(command or "true", posix=True)
+            exec_line = shlex.join(argv)
+            script = f"{exports}; exec {exec_line}"
+            return ["bash", "-lc", script]
+        if command:
+            return [command]
+        return []
 
     @staticmethod
     def _shell_quote(value: str) -> str:
