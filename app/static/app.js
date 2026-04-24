@@ -1,22 +1,13 @@
-const messagesEl = document.querySelector("#messages");
-const formEl = document.querySelector("#prompt-form");
-const inputEl = document.querySelector("#prompt-input");
-const sendButtonEl = document.querySelector("#send-button");
-const clearButtonEl = document.querySelector("#clear-chat");
-const newChatButtonEl = document.querySelector("#new-chat");
-const serverStatusEl = document.querySelector("#server-status");
 const statusDotEl = document.querySelector("#status-dot");
-const apiKeyInputEl = document.querySelector("#api-key-input");
+const serverStatusEl = document.querySelector("#server-status");
+const terminalWrapEl = document.querySelector("#terminal-wrap");
+const connectBtn = document.querySelector("#connect-btn");
+const disconnectBtn = document.querySelector("#disconnect-btn");
 
-const STORAGE_KEY = "claude-tmux-chat-id";
-
-let state = {
-  chatId: null,
-  eventSource: null,
-  assistantNode: null,
-  assistantBuffer: "",
-  lastEventId: 0,
-};
+let term = null;
+let fitAddon = null;
+/** @type {WebSocket | null} */
+let socket = null;
 
 function setConnectionStatus(kind, label) {
   statusDotEl.classList.remove("online", "offline");
@@ -25,235 +16,123 @@ function setConnectionStatus(kind, label) {
   serverStatusEl.textContent = label;
 }
 
-function appendMessage(role, text) {
-  const article = document.createElement("article");
-  article.className = `message ${role}`;
-
-  const avatar = document.createElement("div");
-  avatar.className = "avatar";
-  avatar.textContent = role === "user" ? "You" : role === "status" ? "···" : "AI";
-
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-
-  const label = document.createElement("p");
-  label.className = "message-label";
-  label.textContent =
-    role === "user" ? "You" : role === "status" ? "System" : "Assistant";
-
-  const body = document.createElement("pre");
-  body.className = "message-body";
-  body.textContent = text;
-
-  bubble.append(label, body);
-  article.append(avatar, bubble);
-  messagesEl.append(article);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-
-  return { article, body };
+function wsUrl() {
+  const loc = window.location;
+  const scheme = loc.protocol === "https:" ? "wss" : "ws";
+  return `${scheme}://${loc.host}/ws/terminal`;
 }
 
-function ensureAssistantNode() {
-  if (!state.assistantNode) {
-    state.assistantNode = appendMessage("assistant", "");
-    state.assistantBuffer = "";
-  }
-  return state.assistantNode;
-}
-
-function finalizeAssistantNode() {
-  state.assistantNode = null;
-  state.assistantBuffer = "";
-}
-
-function closeStream() {
-  if (state.eventSource) {
-    state.eventSource.close();
-    state.eventSource = null;
-  }
-}
-
-function openStream(chatId) {
-  closeStream();
-  const url = `/chats/${chatId}/events?after_id=${state.lastEventId || 0}`;
-  const source = new EventSource(url);
-  state.eventSource = source;
-
-  const handleEvent = (role) => (event) => {
-    let payload;
-    try {
-      payload = JSON.parse(event.data);
-    } catch {
-      return;
-    }
-
-    if (payload.id) state.lastEventId = payload.id;
-
-    if (role === "user") {
-      finalizeAssistantNode();
-      appendMessage("user", payload.content);
-    } else if (role === "assistant") {
-      const node = ensureAssistantNode();
-      state.assistantBuffer += payload.content;
-      node.body.textContent = state.assistantBuffer;
-      messagesEl.scrollTop = messagesEl.scrollHeight;
-    } else if (role === "status") {
-      finalizeAssistantNode();
-      appendMessage("status", payload.content);
-    } else if (role === "error") {
-      finalizeAssistantNode();
-      appendMessage("status", `error: ${payload.content}`);
-    }
-  };
-
-  source.addEventListener("user", handleEvent("user"));
-  source.addEventListener("assistant", handleEvent("assistant"));
-  source.addEventListener("status", handleEvent("status"));
-  source.addEventListener("error", handleEvent("error"));
-  source.addEventListener("end", () => {
-    setConnectionStatus("offline", "Chat ended");
-    closeStream();
+function ensureTerm() {
+  if (term) return;
+  term = new Terminal({
+    cursorBlink: true,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    fontSize: 14,
+    theme: {
+      background: "#0a0f1a",
+      foreground: "#e5eefc",
+      cursor: "#67a4ff",
+    },
   });
-
-  source.onopen = () => setConnectionStatus("online", `chat ${chatId}`);
-  source.onerror = () => setConnectionStatus("offline", "Reconnecting...");
+  const exp = globalThis.FitAddon;
+  const FitCtor = exp?.FitAddon ?? exp;
+  fitAddon = new FitCtor();
+  term.loadAddon(fitAddon);
+  term.open(terminalWrapEl);
+  term.onData((data) => {
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(new TextEncoder().encode(data));
+    }
+  });
+  scheduleFit();
 }
 
-async function createChat() {
-  const apiKey = (apiKeyInputEl.value || "").trim();
-  if (!apiKey) {
-    apiKeyInputEl.focus();
-    throw new Error("Please provide an ANTHROPIC_API_KEY before starting a chat.");
-  }
-
-  setConnectionStatus(null, "Starting tmux session...");
-  const response = await fetch("/chats", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ anthropic_api_key: apiKey }),
-  });
-  if (!response.ok) {
-    setConnectionStatus("offline", "Failed to create chat");
-    let detail = response.status;
+function scheduleFit() {
+  requestAnimationFrame(() => {
     try {
-      const payload = await response.json();
-      if (payload?.detail) detail = payload.detail;
+      fitAddon?.fit();
     } catch {
       // ignore
     }
-    throw new Error(`Failed to create chat: ${detail}`);
-  }
-  const payload = await response.json();
-  state.chatId = payload.chat_id;
-  state.lastEventId = 0;
-  finalizeAssistantNode();
-  localStorage.setItem(STORAGE_KEY, state.chatId);
-  // Clear the key from the DOM once the chat is created; the server now
-  // owns it for the chat lifetime and the browser no longer needs it.
-  apiKeyInputEl.value = "";
-  openStream(state.chatId);
-  return state.chatId;
-}
-
-async function ensureChat() {
-  if (state.chatId) return state.chatId;
-  return await createChat();
-}
-
-async function sendPrompt(text) {
-  const chatId = await ensureChat();
-  const response = await fetch(`/chats/${chatId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    sendResize();
   });
-  if (!response.ok) {
-    const errorPayload = await response.json().catch(() => ({}));
-    throw new Error(errorPayload.detail || `send failed (${response.status})`);
-  }
 }
 
-formEl.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const text = inputEl.value.trim();
-  if (!text) return;
+function sendResize() {
+  if (!socket || socket.readyState !== WebSocket.OPEN || !term) return;
+  socket.send(
+    JSON.stringify({
+      type: "resize",
+      cols: term.cols,
+      rows: term.rows,
+    })
+  );
+}
 
-  inputEl.value = "";
-  sendButtonEl.disabled = true;
-
-  try {
-    await sendPrompt(text);
-  } catch (err) {
-    appendMessage("status", err.message || "Unknown error");
-  } finally {
-    sendButtonEl.disabled = false;
-    inputEl.focus();
+function disconnect() {
+  if (socket) {
+    socket.close();
+    socket = null;
   }
-});
+  connectBtn.disabled = false;
+  disconnectBtn.disabled = true;
+  setConnectionStatus("offline", "Disconnected");
+}
 
-newChatButtonEl.addEventListener("click", async () => {
-  messagesEl.innerHTML = "";
-  try {
-    await createChat();
-    appendMessage("status", `New tmux chat ${state.chatId} created`);
-  } catch (err) {
-    appendMessage("status", err.message || "Failed to start chat");
-  }
-});
+function connect() {
+  disconnect();
+  ensureTerm();
+  term.reset();
 
-clearButtonEl.addEventListener("click", () => {
-  messagesEl.innerHTML = "";
-  finalizeAssistantNode();
-});
+  setConnectionStatus(null, "Connecting…");
+  connectBtn.disabled = true;
+  disconnectBtn.disabled = false;
 
-async function resumeChatIfAny() {
-  const existing = localStorage.getItem(STORAGE_KEY);
-  if (!existing) {
-    setConnectionStatus(null, "Press 'New chat' to begin");
-    return;
-  }
-  try {
-    const response = await fetch(`/chats/${existing}`);
-    if (!response.ok) {
-      localStorage.removeItem(STORAGE_KEY);
-      setConnectionStatus(null, "Press 'New chat' to begin");
+  const ws = new WebSocket(wsUrl());
+  socket = ws;
+  ws.binaryType = "arraybuffer";
+
+  ws.onopen = () => {
+    setConnectionStatus("online", "Connected");
+    scheduleFit();
+  };
+
+  ws.onmessage = (event) => {
+    if (typeof event.data === "string") {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "error" && msg.message) {
+          term.writeln(`\r\n\x1b[31m${msg.message}\x1b[0m\r\n`);
+        }
+      } catch {
+        // ignore non-JSON text
+      }
       return;
     }
-    const payload = await response.json();
-    state.chatId = existing;
-    (payload.events || []).forEach((ev) => {
-      state.lastEventId = Math.max(state.lastEventId, ev.id);
-      if (ev.role === "user") appendMessage("user", ev.content);
-      else if (ev.role === "assistant") {
-        const node = ensureAssistantNode();
-        state.assistantBuffer += ev.content;
-        node.body.textContent = state.assistantBuffer;
-      } else if (ev.role === "status") appendMessage("status", ev.content);
-    });
-    finalizeAssistantNode();
-    if (payload.chat?.status === "running") {
-      openStream(existing);
-    } else {
-      setConnectionStatus("offline", "Previous chat ended");
+    const view = new Uint8Array(event.data);
+    term.write(view);
+  };
+
+  ws.onerror = () => {
+    setConnectionStatus("offline", "WebSocket error");
+  };
+
+  ws.onclose = () => {
+    if (socket === ws) socket = null;
+    connectBtn.disabled = false;
+    disconnectBtn.disabled = true;
+    if (serverStatusEl.textContent === "Connecting…") {
+      setConnectionStatus("offline", "Connection failed");
+    } else if (serverStatusEl.textContent === "Connected") {
+      setConnectionStatus("offline", "Disconnected");
     }
-  } catch (err) {
-    console.error(err);
-    setConnectionStatus("offline", "Failed to resume chat");
-  }
+  };
 }
 
-function scrollActivePromptIntoView() {
-  const active = document.activeElement;
-  if (active !== inputEl && active !== apiKeyInputEl) return;
-  requestAnimationFrame(() => {
-    active.scrollIntoView({ block: "nearest", inline: "nearest" });
-  });
-}
+connectBtn.addEventListener("click", () => connect());
+disconnectBtn.addEventListener("click", () => disconnect());
 
-inputEl.addEventListener("focus", scrollActivePromptIntoView);
-apiKeyInputEl.addEventListener("focus", scrollActivePromptIntoView);
+window.addEventListener("resize", scheduleFit);
 if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", scrollActivePromptIntoView);
+  window.visualViewport.addEventListener("resize", scheduleFit);
 }
-
-resumeChatIfAny();
