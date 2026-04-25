@@ -28,6 +28,12 @@ def test_index_served(client):
     assert b"xterm" in response.content.lower() or b"terminal" in response.content.lower()
 
 
+def test_ws_terminal_plain_get_is_upgrade_required(client):
+    response = client.get("/ws/terminal")
+    assert response.status_code == 426
+    assert "WebSocket" in response.json()["detail"]
+
+
 def test_terminal_websocket_accepts(monkeypatch):
     async def fake_bridge(websocket):
         await websocket.accept()

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .ssh_terminal import run_terminal_bridge
@@ -25,6 +25,18 @@ def index() -> FileResponse:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/ws/terminal", include_in_schema=False)
+def ws_terminal_http_only() -> JSONResponse:
+    """Plain HTTP GET hits this path when the WebSocket upgrade was stripped (e.g. nginx without Upgrade headers)."""
+    return JSONResponse(
+        status_code=426,
+        content={
+            "detail": "This path is WebSocket-only. Configure your reverse proxy to pass "
+            "Upgrade and Connection headers (see uvicorn access log: GET here with 404/426 means no WS upgrade)."
+        },
+    )
 
 
 @app.websocket("/ws/terminal")

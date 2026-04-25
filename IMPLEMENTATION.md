@@ -47,6 +47,24 @@ flowchart LR
 This service can reach any host the SSH key allows. Run it behind TLS, limit
 network access, and treat the host like a bastion.
 
+### nginx reverse proxy
+
+Terminals use **`WebSocket /ws/terminal`**. nginx must forward **`Upgrade`** and
+**`Connection`**; otherwise the browser shows WebSocket **1006** and Uvicorn logs
+plain **`GET /ws/terminal` 404** (no upgrade reached the app).
+
+1. Run the app on loopback only, e.g.  
+   `uvicorn app.main:app --host 127.0.0.1 --port 8000`
+2. Install nginx, copy [`deploy/nginx-site.example.conf`](deploy/nginx-site.example.conf)
+   to `/etc/nginx/sites-available/…`, set **`server_name`** (and DNS **A** record)
+   to your host.
+3. **`sudo nginx -t`** then **`sudo systemctl reload nginx`**
+4. TLS: install **Certbot** (`python3-certbot-nginx` or `certbot`), obtain certs
+   for `server_name`, then enable the **`listen 443 ssl`** `server` block in the
+   example (and optionally redirect **80 → 443**).
+5. Open **80** (and **443** if using HTTPS) in the cloud firewall; do **not**
+   expose port **8000** publicly if Uvicorn stays on **127.0.0.1**.
+
 ### Tests
 
 ```bash
