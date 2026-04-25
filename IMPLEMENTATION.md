@@ -67,6 +67,12 @@ plain **`GET /ws/terminal` 404** (no upgrade reached the app).
 5. Open **80** (and **443** if using HTTPS) in the cloud firewall; do **not**
    expose port **8000** publicly if Uvicorn stays on **127.0.0.1**.
 
+If **`/health` works** but the UI shows **Disconnected (code 1006)** right after
+**Connected**, the WebSocket upgrade is fine; check **Uvicorn logs** for a Python
+traceback (SSH / PTY errors used to drop the socket without a clean close). The
+site examples set **`proxy_buffering off`** and **`gzip off`** on `/` to avoid
+nginx interfering with binary WebSocket frames.
+
 ### Tests
 
 ```bash

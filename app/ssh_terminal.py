@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import shlex
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ import asyncssh
 from asyncssh import PIPE, STDOUT
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -146,6 +149,14 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
             encoding=None,
         ) as process:
             await _bridge_loop(websocket, process, cols, rows)
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.exception("terminal bridge session failed")
+        with contextlib.suppress(Exception):
+            await websocket.send_text(
+                json.dumps({"type": "error", "message": f"Server error: {exc}"})
+            )
     finally:
         conn.close()
         await conn.wait_closed()
