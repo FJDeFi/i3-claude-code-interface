@@ -102,6 +102,16 @@ def build_remote_command_argv() -> Tuple[str, ...]:
     return ("/bin/bash", "-il")
 
 
+def argv_to_remote_exec_string(argv: Tuple[str, ...]) -> str:
+    """Turn argv into one remote exec string for AsyncSSH.
+
+    Passing ``command=`` as a tuple of length > 2 triggers a bug in some AsyncSSH
+    versions (logging assumes 2-tuples are host/port).
+    """
+
+    return " ".join(shlex.quote(part) for part in argv)
+
+
 def _known_hosts_argument(cfg: SshBridgeConfig) -> Any:
     if not cfg.strict_host_key_checking:
         return None
@@ -138,9 +148,10 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
         return
 
     argv = build_remote_command_argv()
+    remote_exec = argv_to_remote_exec_string(argv)
     try:
         async with conn.create_process(
-            command=argv,
+            command=remote_exec,
             stdin=PIPE,
             stdout=PIPE,
             stderr=STDOUT,

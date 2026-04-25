@@ -40,6 +40,12 @@ def test_load_ssh_bridge_config_ok(monkeypatch, tmp_path):
     assert cfg.client_key_path == Path(key)
 
 
+def test_argv_to_remote_exec_string_joins_with_shlex():
+    s = ssh_terminal.argv_to_remote_exec_string(("bash", "-lc", "echo hi; date"))
+    assert s.startswith("bash -lc ")
+    assert "echo hi" in s
+
+
 def test_build_remote_command_login_shell(monkeypatch):
     for k in (
         "SSH_REMOTE_COMMAND",
