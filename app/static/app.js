@@ -91,8 +91,10 @@ function connect() {
   const ws = new WebSocket(wsUrl());
   socket = ws;
   ws.binaryType = "arraybuffer";
+  let wsOpened = false;
 
   ws.onopen = () => {
+    wsOpened = true;
     setConnectionStatus("online", "Connected");
     scheduleFit();
   };
@@ -114,17 +116,24 @@ function connect() {
   };
 
   ws.onerror = () => {
-    setConnectionStatus("offline", "WebSocket error");
+    console.error(
+      "WebSocket error (browsers hide details). Check DevTools → Network → WS for /ws/terminal, or Console for mixed-content / CSP."
+    );
+    setConnectionStatus("offline", "WebSocket error — see browser console");
   };
 
-  ws.onclose = () => {
+  ws.onclose = (ev) => {
     if (socket === ws) socket = null;
     connectBtn.disabled = false;
     disconnectBtn.disabled = true;
-    if (serverStatusEl.textContent === "Connecting…") {
-      setConnectionStatus("offline", "Connection failed");
-    } else if (serverStatusEl.textContent === "Connected") {
+    const reason = ev.reason ? `: ${ev.reason}` : "";
+    const detail = `code ${ev.code}${reason}`;
+    if (!wsOpened) {
+      setConnectionStatus("offline", `WebSocket failed (${detail})`);
+    } else if (ev.code === 1000) {
       setConnectionStatus("offline", "Disconnected");
+    } else {
+      setConnectionStatus("offline", `Disconnected (${detail})`);
     }
   };
 }
