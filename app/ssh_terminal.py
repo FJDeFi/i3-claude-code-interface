@@ -140,7 +140,7 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
     argv = build_remote_command_argv()
     try:
         async with conn.create_process(
-            *argv,
+            command=argv,
             stdin=PIPE,
             stdout=PIPE,
             stderr=STDOUT,
