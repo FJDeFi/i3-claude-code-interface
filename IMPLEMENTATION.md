@@ -55,9 +55,11 @@ plain **`GET /ws/terminal` 404** (no upgrade reached the app).
 
 1. Run the app on loopback only, e.g.  
    `uvicorn app.main:app --host 127.0.0.1 --port 8000`
-2. Install nginx, copy [`deploy/nginx-site.example.conf`](deploy/nginx-site.example.conf)
-   to `/etc/nginx/sites-available/…`, set **`server_name`** (and DNS **A** record)
-   to your host.
+2. Install nginx: either run **`bash deploy/setup-nginx.sh YOUR_IP_OR_DNS`** on the
+   VM (writes and enables a site with WebSocket headers), or copy
+   [`deploy/nginx-site.example.conf`](deploy/nginx-site.example.conf) to
+   `/etc/nginx/sites-available/…` and set **`server_name`** (and DNS **A** record)
+   when you use a domain.
 3. **`sudo nginx -t`** then **`sudo systemctl reload nginx`**
 4. TLS: install **Certbot** (`python3-certbot-nginx` or `certbot`), obtain certs
    for `server_name`, then enable the **`listen 443 ssl`** `server` block in the
