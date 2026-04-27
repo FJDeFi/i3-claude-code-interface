@@ -22,6 +22,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
+START_MESSAGE_TIMEOUT_SECONDS = 3.0
 
 
 @dataclass(frozen=True)
@@ -74,7 +75,7 @@ def load_ssh_bridge_config() -> SshBridgeConfig:
     )
 
 
-def build_remote_command_argv() -> Tuple[str, ...]:
+def build_remote_command_argv(api_key: Optional[str] = None) -> Tuple[str, ...]:
     """Return argv for the remote process (executed under a PTY).
 
     * If ``SSH_REMOTE_COMMAND`` is set, run ``bash -lc`` with optional
@@ -85,17 +86,19 @@ def build_remote_command_argv() -> Tuple[str, ...]:
     """
 
     remote_cmd = os.getenv("SSH_REMOTE_COMMAND", "").strip()
-    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    effective_api_key = (
+        api_key.strip() if api_key is not None else os.getenv("ANTHROPIC_API_KEY", "").strip()
+    )
     claude_cmd = os.getenv("CLAUDE_CODE_CMD", "claude").strip() or "claude"
 
     parts: List[str] = []
-    if api_key:
-        parts.append(f"export ANTHROPIC_API_KEY={shlex.quote(api_key)}")
+    if effective_api_key:
+        parts.append(f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}")
     if remote_cmd:
         parts.append(remote_cmd)
         inner = "; ".join(parts)
         return ("bash", "-lc", inner)
-    if api_key:
+    if effective_api_key:
         parts.append(f"exec {shlex.quote(claude_cmd)}")
         inner = "; ".join(parts)
         return ("bash", "-lc", inner)
@@ -131,6 +134,10 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
         await websocket.close(code=4400)
         return
 
+    try:
+        api_key = await _receive_start_api_key(websocket)
+    except WebSocketDisconnect:
+        return
     cols, rows = _default_term_size()
     try:
         conn = await asyncssh.connect(
@@ -147,7 +154,7 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
         await websocket.close(code=4401)
         return
 
-    argv = build_remote_command_argv()
+    argv = build_remote_command_argv(api_key)
     remote_exec = argv_to_remote_exec_string(argv)
     try:
         async with conn.create_process(
@@ -171,6 +178,36 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
     finally:
         conn.close()
         await conn.wait_closed()
+
+
+async def _receive_start_api_key(websocket: WebSocket) -> Optional[str]:
+    """Read the optional first WebSocket message containing the session API key."""
+
+    try:
+        message = await asyncio.wait_for(
+            websocket.receive(), timeout=START_MESSAGE_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        return None
+
+    if message.get("type") == "websocket.disconnect":
+        raise WebSocketDisconnect()
+    if message.get("type") != "websocket.receive":
+        return None
+
+    text = message.get("text")
+    if not text:
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if payload.get("type") != "start":
+        return None
+    api_key = payload.get("anthropic_api_key")
+    if not isinstance(api_key, str):
+        return None
+    return api_key.strip() or None
 
 
 def _default_term_size() -> Tuple[int, int]:

@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#0b1020" />
+    <meta name="theme-color" content="#050615" />
     <title>Claude Code Interface</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
     <link rel="stylesheet" href="/static/styles.css" />
@@ -14,15 +14,18 @@
   <body>
     <main class="shell">
       <section class="hero">
-        <div>
-          <p class="eyebrow">Web Client</p>
-          <h1>Remote Claude Code over SSH</h1>
+        <div class="hero-copy-wrap">
+          <p class="eyebrow">Intelligence Cubed Terminal</p>
+          <h1>Claude Code, routed through your secure SSH bridge.</h1>
           <p class="hero-copy">
-            This page opens a WebSocket to the app server, which connects with
-            your configured SSH key and streams a PTY (for example
-            <code>claude</code> or an interactive shell). Type directly in the
-            terminal below.
+            Enter your Anthropic API key, connect to the configured bridge, and
+            start a live Claude Code terminal session.
           </p>
+          <div class="hero-tags" aria-label="Session capabilities">
+            <span>Text</span>
+            <span>Workflows</span>
+            <span>Remote PTY</span>
+          </div>
         </div>
         <div class="hero-status" id="connection-card">
           <span class="status-dot" id="status-dot"></span>
@@ -33,15 +36,39 @@
         </div>
       </section>
 
+      <section class="launch-card" aria-labelledby="launch-title">
+        <div>
+          <p class="eyebrow">OpenClaw Ready</p>
+          <h2 id="launch-title">Start Claude Code</h2>
+          <p>
+            Your key is sent only with this WebSocket session so the server can
+            export <code>ANTHROPIC_API_KEY</code> before launching
+            <code>claude</code>.
+          </p>
+        </div>
+        <label class="key-field" for="anthropic-api-key">
+          <span>Anthropic API Key</span>
+          <input
+            id="anthropic-api-key"
+            name="anthropic-api-key"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="sk-ant-..."
+          />
+        </label>
+      </section>
+
       <section class="panel">
         <header class="panel-header">
           <div>
+            <p class="eyebrow">Workflow Console</p>
             <h2>Terminal</h2>
             <p>
               SSH host, user, and private key path are set on the server
               (<code>SSH_HOST</code>, <code>SSH_USER</code>,
-              <code>SSH_PRIVATE_KEY_PATH</code>). Use Connect when you are
-              ready.
+              <code>SSH_PRIVATE_KEY_PATH</code>). Use Connect when your API key
+              is ready.
             </p>
           </div>
           <div class="panel-buttons">

@@ -68,6 +68,18 @@ def test_build_remote_command_with_api_key(monkeypatch):
     assert "exec" in inner and "claude" in inner
 
 
+def test_build_remote_command_with_session_api_key(monkeypatch):
+    monkeypatch.delenv("SSH_REMOTE_COMMAND", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env-secret")
+    monkeypatch.setenv("CLAUDE_CODE_CMD", "claude")
+    argv = ssh_terminal.build_remote_command_argv("sk-ant-session-secret")
+    assert argv[0] == "bash" and argv[1] == "-lc"
+    inner = argv[2]
+    assert "sk-ant-session-secret" in inner
+    assert "sk-ant-env-secret" not in inner
+    assert "exec" in inner and "claude" in inner
+
+
 def test_build_remote_command_custom_remote(monkeypatch):
     monkeypatch.setenv("SSH_REMOTE_COMMAND", "vim")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)

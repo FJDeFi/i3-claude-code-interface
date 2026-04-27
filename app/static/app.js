@@ -3,6 +3,7 @@ const serverStatusEl = document.querySelector("#server-status");
 const terminalWrapEl = document.querySelector("#terminal-wrap");
 const connectBtn = document.querySelector("#connect-btn");
 const disconnectBtn = document.querySelector("#disconnect-btn");
+const apiKeyInput = document.querySelector("#anthropic-api-key");
 
 let term = null;
 let fitAddon = null;
@@ -29,9 +30,10 @@ function ensureTerm() {
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     fontSize: 14,
     theme: {
-      background: "#0a0f1a",
-      foreground: "#e5eefc",
-      cursor: "#67a4ff",
+      background: "#050817",
+      foreground: "#f4f7ff",
+      cursor: "#40d7ff",
+      selectionBackground: "#27346f",
     },
   });
   const exp = globalThis.FitAddon;
@@ -75,17 +77,26 @@ function disconnect() {
     socket = null;
   }
   connectBtn.disabled = false;
+  apiKeyInput.disabled = false;
   disconnectBtn.disabled = true;
   setConnectionStatus("offline", "Disconnected");
 }
 
 function connect() {
+  const anthropicApiKey = apiKeyInput.value.trim();
+  if (!anthropicApiKey) {
+    setConnectionStatus("offline", "Enter an Anthropic API key");
+    apiKeyInput.focus();
+    return;
+  }
+
   disconnect();
   ensureTerm();
   term.reset();
 
   setConnectionStatus(null, "Connecting…");
   connectBtn.disabled = true;
+  apiKeyInput.disabled = true;
   disconnectBtn.disabled = false;
 
   const ws = new WebSocket(wsUrl());
@@ -95,6 +106,12 @@ function connect() {
 
   ws.onopen = () => {
     wsOpened = true;
+    ws.send(
+      JSON.stringify({
+        type: "start",
+        anthropic_api_key: anthropicApiKey,
+      })
+    );
     setConnectionStatus("online", "Connected");
     scheduleFit();
   };
@@ -125,6 +142,7 @@ function connect() {
   ws.onclose = (ev) => {
     if (socket === ws) socket = null;
     connectBtn.disabled = false;
+    apiKeyInput.disabled = false;
     disconnectBtn.disabled = true;
     const reason = ev.reason ? `: ${ev.reason}` : "";
     const detail = `code ${ev.code}${reason}`;
