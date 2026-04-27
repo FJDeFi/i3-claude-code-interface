@@ -30,10 +30,10 @@ function ensureTerm() {
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     fontSize: 14,
     theme: {
-      background: "#050817",
-      foreground: "#f4f7ff",
-      cursor: "#40d7ff",
-      selectionBackground: "#27346f",
+      background: "#15100d",
+      foreground: "#fff7ed",
+      cursor: "#ff7a1a",
+      selectionBackground: "#7c2d12",
     },
   });
   const exp = globalThis.FitAddon;
@@ -112,7 +112,7 @@ function connect() {
         anthropic_api_key: anthropicApiKey,
       })
     );
-    setConnectionStatus("online", "Connected");
+    setConnectionStatus("online", "Starting Claude Code");
     scheduleFit();
   };
 
