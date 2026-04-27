@@ -30,10 +30,13 @@ function ensureTerm() {
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     fontSize: 14,
     theme: {
-      background: "#15100d",
-      foreground: "#fff7ed",
+      background: "#fffaf2",
+      foreground: "#1f1a14",
       cursor: "#ff7a1a",
-      selectionBackground: "#7c2d12",
+      selectionBackground: "#ffd7ad",
+      black: "#1f1a14",
+      blue: "#e85d04",
+      brightBlue: "#ff7a1a",
     },
   });
   const exp = globalThis.FitAddon;

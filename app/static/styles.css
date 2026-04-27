@@ -14,8 +14,8 @@
   --success: #149c68;
   --warning: #f59e0b;
   --danger: #dc2626;
-  --terminal-bg: #15100d;
-  --terminal-text: #fff7ed;
+  --terminal-bg: #fffaf2;
+  --terminal-text: #1f1a14;
   --shadow: 0 26px 70px rgba(140, 67, 10, 0.14);
 }
 
@@ -352,7 +352,7 @@ code {
   border: 1px solid rgba(239, 128, 28, 0.24);
   border-radius: 22px;
   background:
-    radial-gradient(circle at 15% 0%, rgba(255, 122, 26, 0.14), transparent 35%),
+    radial-gradient(circle at 15% 0%, rgba(255, 122, 26, 0.12), transparent 35%),
     var(--terminal-bg);
 }
 

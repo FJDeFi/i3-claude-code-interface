@@ -181,33 +181,37 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
 
 
 async def _receive_start_api_key(websocket: WebSocket) -> Optional[str]:
-    """Read the optional first WebSocket message containing the session API key."""
+    """Read the initial WebSocket start message containing the session API key."""
 
-    try:
-        message = await asyncio.wait_for(
-            websocket.receive(), timeout=START_MESSAGE_TIMEOUT_SECONDS
-        )
-    except asyncio.TimeoutError:
-        return None
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + START_MESSAGE_TIMEOUT_SECONDS
+    while True:
+        timeout = deadline - loop.time()
+        if timeout <= 0:
+            return None
+        try:
+            message = await asyncio.wait_for(websocket.receive(), timeout=timeout)
+        except asyncio.TimeoutError:
+            return None
 
-    if message.get("type") == "websocket.disconnect":
-        raise WebSocketDisconnect()
-    if message.get("type") != "websocket.receive":
-        return None
+        if message.get("type") == "websocket.disconnect":
+            raise WebSocketDisconnect()
+        if message.get("type") != "websocket.receive":
+            continue
 
-    text = message.get("text")
-    if not text:
-        return None
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        return None
-    if payload.get("type") != "start":
-        return None
-    api_key = payload.get("anthropic_api_key")
-    if not isinstance(api_key, str):
-        return None
-    return api_key.strip() or None
+        text = message.get("text")
+        if not text:
+            continue
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        if payload.get("type") != "start":
+            continue
+        api_key = payload.get("anthropic_api_key")
+        if not isinstance(api_key, str):
+            return None
+        return api_key.strip() or None
 
 
 def _default_term_size() -> Tuple[int, int]:

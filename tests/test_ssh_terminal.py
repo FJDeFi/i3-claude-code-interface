@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from app import ssh_terminal
 
@@ -94,6 +96,29 @@ def test_try_parse_resize():
         100,
         30,
     )
+
+
+def test_receive_start_api_key_ignores_initial_resize():
+    class FakeWebSocket:
+        def __init__(self):
+            self.messages = [
+                {
+                    "type": "websocket.receive",
+                    "text": '{"type":"resize","cols":100,"rows":30}',
+                },
+                {
+                    "type": "websocket.receive",
+                    "text": '{"type":"start","anthropic_api_key":" sk-ant-session "}',
+                },
+            ]
+
+        async def receive(self):
+            if not self.messages:
+                raise WebSocketDisconnect()
+            return self.messages.pop(0)
+
+    api_key = asyncio.run(ssh_terminal._receive_start_api_key(FakeWebSocket()))
+    assert api_key == "sk-ant-session"
 
 
 def test_default_term_size(monkeypatch):
