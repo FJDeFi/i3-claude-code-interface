@@ -1,8 +1,7 @@
 const statusDotEl = document.querySelector("#status-dot");
 const serverStatusEl = document.querySelector("#server-status");
 const terminalWrapEl = document.querySelector("#terminal-wrap");
-const connectBtn = document.querySelector("#connect-btn");
-const disconnectBtn = document.querySelector("#disconnect-btn");
+const connectionToggleBtn = document.querySelector("#connection-toggle-btn");
 
 let term = null;
 let fitAddon = null;
@@ -39,6 +38,15 @@ function setConnectionStatus(kind, label) {
   if (kind === "online") statusDotEl.classList.add("online");
   if (kind === "offline") statusDotEl.classList.add("offline");
   serverStatusEl.textContent = label;
+}
+
+function setConnectionButton(state) {
+  const isDisconnect = state === "disconnect";
+  connectionToggleBtn.textContent = isDisconnect ? "Disconnect" : "Connect";
+  connectionToggleBtn.dataset.state = isDisconnect ? "disconnect" : "connect";
+  connectionToggleBtn.classList.toggle("ghost-button", isDisconnect);
+  connectionToggleBtn.classList.toggle("primary-button", !isDisconnect);
+  connectionToggleBtn.disabled = false;
 }
 
 function wsUrl() {
@@ -106,8 +114,7 @@ function disconnect() {
     socket.close();
     socket = null;
   }
-  connectBtn.disabled = false;
-  disconnectBtn.disabled = true;
+  setConnectionButton("connect");
   setConnectionStatus("offline", "Disconnected");
 }
 
@@ -117,8 +124,7 @@ function connect() {
   term.reset();
 
   setConnectionStatus(null, "Connecting…");
-  connectBtn.disabled = true;
-  disconnectBtn.disabled = false;
+  setConnectionButton("disconnect");
 
   const ws = new WebSocket(wsUrl());
   socket = ws;
@@ -156,9 +162,9 @@ function connect() {
   };
 
   ws.onclose = (ev) => {
+    if (socket !== ws) return;
     if (socket === ws) socket = null;
-    connectBtn.disabled = false;
-    disconnectBtn.disabled = true;
+    setConnectionButton("connect");
     const reason = ev.reason ? `: ${ev.reason}` : "";
     const detail = `code ${ev.code}${reason}`;
     if (!wsOpened) {
@@ -171,8 +177,15 @@ function connect() {
   };
 }
 
-connectBtn.addEventListener("click", () => connect());
-disconnectBtn.addEventListener("click", () => disconnect());
+connectionToggleBtn.addEventListener("click", () => {
+  if (connectionToggleBtn.dataset.state === "disconnect") {
+    disconnect();
+    return;
+  }
+  connect();
+});
+
+setConnectionButton("connect");
 
 window.addEventListener("resize", scheduleFit);
 if (window.visualViewport) {

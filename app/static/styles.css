@@ -441,24 +441,44 @@ body.embed .terminal-wrap {
 @media (max-width: 520px) {
   .shell {
     width: 100%;
-    gap: 8px;
-    padding-right: 12px;
-    padding-left: 12px;
+    gap: 7px;
+    padding-top: max(10px, env(safe-area-inset-top));
+    padding-right: 10px;
+    padding-left: 10px;
   }
 
   .hero {
     grid-template-columns: 1fr auto;
+    gap: 8px;
     align-items: stretch;
   }
 
   .hero-copy-wrap,
   .hero-status,
   .panel {
-    border-radius: 16px;
+    border-radius: 14px;
+    box-shadow: 0 14px 34px rgba(140, 67, 10, 0.11);
+  }
+
+  .hero-copy-wrap {
+    padding: 10px 12px;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.28rem, 7vw, 1.75rem);
+    letter-spacing: -0.055em;
+  }
+
+  .hero-note {
+    margin-top: 7px;
+    font-size: 0.76rem;
+    line-height: 1.28;
   }
 
   .hero-status {
+    gap: 9px;
     min-width: 0;
+    padding: 10px 12px;
   }
 
   .status-label {
@@ -467,25 +487,49 @@ body.embed .terminal-wrap {
 
   .status-value {
     margin-top: 0;
-    font-size: 0.82rem;
+    font-size: 0.78rem;
+    line-height: 1.15;
   }
 
   .status-dot {
-    width: 9px;
-    height: 9px;
-    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.13);
+    width: 8px;
+    height: 8px;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.13);
   }
 
   .status-dot.online {
-    box-shadow: 0 0 0 4px rgba(20, 156, 104, 0.12);
+    box-shadow: 0 0 0 3px rgba(20, 156, 104, 0.12);
   }
 
   .status-dot.offline {
-    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.1);
+    box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1);
+  }
+
+  .panel {
+    padding: 12px;
+  }
+
+  .panel-header {
+    align-items: center;
+    flex-direction: row;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .panel-header h2 {
+    margin: 0;
+    font-size: 1.02rem;
   }
 
   .panel-buttons {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    margin-left: auto;
+    justify-content: flex-end;
+  }
+
+  .primary-button,
+  .ghost-button {
+    min-height: 34px;
+    padding: 0 14px;
+    font-size: 0.86rem;
   }
 }
