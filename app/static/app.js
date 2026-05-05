@@ -6,6 +6,8 @@ const disconnectBtn = document.querySelector("#disconnect-btn");
 
 let term = null;
 let fitAddon = null;
+let fitFrame = 0;
+let observedTerminalSize = "";
 /** @type {WebSocket | null} */
 let socket = null;
 
@@ -76,7 +78,9 @@ function ensureTerm() {
 }
 
 function scheduleFit() {
-  requestAnimationFrame(() => {
+  if (!term || fitFrame) return;
+  fitFrame = requestAnimationFrame(() => {
+    fitFrame = 0;
     try {
       fitAddon?.fit();
     } catch {
@@ -176,7 +180,14 @@ if (window.visualViewport) {
 }
 
 if (terminalWrapEl && typeof ResizeObserver !== "undefined") {
-  const ro = new ResizeObserver(() => scheduleFit());
+  const ro = new ResizeObserver((entries) => {
+    const rect = entries[0]?.contentRect;
+    if (!rect) return;
+    const nextSize = `${Math.round(rect.width)}x${Math.round(rect.height)}`;
+    if (nextSize === observedTerminalSize) return;
+    observedTerminalSize = nextSize;
+    scheduleFit();
+  });
   ro.observe(terminalWrapEl);
 }
 

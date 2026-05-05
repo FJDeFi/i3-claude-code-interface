@@ -214,7 +214,8 @@ code {
 .panel {
   display: flex;
   flex-direction: column;
-  min-height: min(66vh, 700px);
+  height: min(66vh, 700px);
+  min-height: 460px;
   padding: 22px;
   border-radius: 30px;
 }
@@ -361,6 +362,7 @@ body.embed .hero-status {
 
 body.embed .panel {
   flex: 1;
+  height: auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -426,6 +428,7 @@ body.embed .terminal-wrap {
 
   .panel {
     flex: 1;
+    height: auto;
     min-height: 0;
   }
 
