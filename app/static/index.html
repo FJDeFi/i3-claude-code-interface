@@ -6,94 +6,62 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#0b1020" />
+    <meta name="theme-color" content="#fff8ef" />
     <title>Claude Code Interface</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260426-white-orange-2" />
   </head>
   <body>
     <main class="shell">
       <section class="hero">
-        <div>
-          <p class="eyebrow">Web Client</p>
-          <h1>Talk to Claude Code running in tmux</h1>
-          <p class="hero-copy">
-            Each chat gets its own tmux session running Claude Code. Prompts
-            are injected via <code>paste-buffer</code> and live output streams
-            back over Server-Sent Events.
-          </p>
+        <div class="hero-copy-wrap">
+          <h1>Claude Code</h1>
         </div>
         <div class="hero-status" id="connection-card">
           <span class="status-dot" id="status-dot"></span>
           <div>
             <p class="status-label">Session</p>
-            <p class="status-value" id="server-status">Not started</p>
+            <p class="status-value" id="server-status">Disconnected</p>
           </div>
         </div>
+      </section>
+
+      <section class="launch-card" aria-labelledby="launch-title">
+        <div>
+          <h2 id="launch-title">Start</h2>
+        </div>
+        <label class="key-field" for="anthropic-api-key">
+          <span>Anthropic API Key</span>
+          <input
+            id="anthropic-api-key"
+            name="anthropic-api-key"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="sk-ant-..."
+          />
+        </label>
       </section>
 
       <section class="panel">
         <header class="panel-header">
           <div>
-            <h2>Conversation</h2>
-            <p>
-              Provide an <code>ANTHROPIC_API_KEY</code> and press "New chat" to
-              spawn a tmux session running Claude Code with that key, or keep
-              typing to send follow-up prompts in the existing one.
-            </p>
+            <h2>Terminal</h2>
           </div>
           <div class="panel-buttons">
-            <button class="ghost-button" id="new-chat" type="button">New chat</button>
-            <button class="ghost-button" id="clear-chat" type="button">Clear view</button>
+            <button class="primary-button" id="connect-btn" type="button">Connect</button>
+            <button class="ghost-button" id="disconnect-btn" type="button" disabled>
+              Disconnect
+            </button>
           </div>
         </header>
 
-        <div class="api-key-row">
-          <label class="sr-only" for="api-key-input">Anthropic API key</label>
-          <input
-            id="api-key-input"
-            type="password"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="ANTHROPIC_API_KEY (sk-ant-...)"
-          />
-          <p class="helper-text">
-            Used only to launch Claude Code for this chat. It is scoped to the
-            tmux session and never replayed into chat messages.
-          </p>
-        </div>
-
-        <div class="messages" id="messages">
-          <article class="message assistant">
-            <div class="avatar">AI</div>
-            <div class="bubble">
-              <p class="message-label">Assistant</p>
-              <p>
-                Ready when you are. Start a new chat to spawn a tmux session
-                running <code>claude</code>, then send a prompt below.
-              </p>
-            </div>
-          </article>
-        </div>
-
-        <form id="prompt-form" class="composer">
-          <label class="sr-only" for="prompt-input">Prompt</label>
-          <textarea
-            id="prompt-input"
-            name="prompt"
-            rows="2"
-            maxlength="8000"
-            placeholder="Ask Claude anything..."
-            required
-          ></textarea>
-          <div class="composer-footer">
-            <button class="primary-button" id="send-button" type="submit">
-              Send
-            </button>
-          </div>
-        </form>
+        <div class="terminal-wrap" id="terminal-wrap"></div>
       </section>
     </main>
 
-    <script src="/static/app.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+    <script src="/static/app.js?v=20260426-claude-start-2" defer></script>
   </body>
 </html>
