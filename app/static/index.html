@@ -9,13 +9,14 @@
     <meta name="theme-color" content="#fff8ef" />
     <title>Claude Code Interface</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
-    <link rel="stylesheet" href="/static/styles.css?v=20260426-white-orange-2" />
+    <link rel="stylesheet" href="static/styles.css?v=20260505-keyless-embed" />
   </head>
   <body>
     <main class="shell">
       <section class="hero">
         <div class="hero-copy-wrap">
           <h1>Claude Code</h1>
+          <p class="hero-note">Session uses credentials configured on the server.</p>
         </div>
         <div class="hero-status" id="connection-card">
           <span class="status-dot" id="status-dot"></span>
@@ -24,23 +25,6 @@
             <p class="status-value" id="server-status">Disconnected</p>
           </div>
         </div>
-      </section>
-
-      <section class="launch-card" aria-labelledby="launch-title">
-        <div>
-          <h2 id="launch-title">Start</h2>
-        </div>
-        <label class="key-field" for="anthropic-api-key">
-          <span>Anthropic API Key</span>
-          <input
-            id="anthropic-api-key"
-            name="anthropic-api-key"
-            type="password"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="sk-ant-..."
-          />
-        </label>
       </section>
 
       <section class="panel">
@@ -62,6 +46,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="/static/app.js?v=20260426-claude-start-2" defer></script>
+    <script src="static/app.js?v=20260505-keyless-embed" defer></script>
   </body>
 </html>
