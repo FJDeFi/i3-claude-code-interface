@@ -98,6 +98,25 @@ def test_try_parse_resize():
     )
 
 
+def test_receive_start_api_key_without_key_returns_none():
+    class FakeWebSocket:
+        def __init__(self):
+            self.messages = [
+                {
+                    "type": "websocket.receive",
+                    "text": '{"type":"start"}',
+                },
+            ]
+
+        async def receive(self):
+            if not self.messages:
+                raise WebSocketDisconnect()
+            return self.messages.pop(0)
+
+    api_key = asyncio.run(ssh_terminal._receive_start_api_key(FakeWebSocket()))
+    assert api_key is None
+
+
 def test_receive_start_api_key_ignores_initial_resize():
     class FakeWebSocket:
         def __init__(self):

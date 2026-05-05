@@ -3,12 +3,34 @@ const serverStatusEl = document.querySelector("#server-status");
 const terminalWrapEl = document.querySelector("#terminal-wrap");
 const connectBtn = document.querySelector("#connect-btn");
 const disconnectBtn = document.querySelector("#disconnect-btn");
-const apiKeyInput = document.querySelector("#anthropic-api-key");
 
 let term = null;
 let fitAddon = null;
 /** @type {WebSocket | null} */
 let socket = null;
+
+function isEmbedMode() {
+  try {
+    const p = new URLSearchParams(window.location.search);
+    if (p.has("embed")) return true;
+  } catch {
+    /* ignore */
+  }
+  try {
+    return window.self !== window.top;
+  } catch {
+    return false;
+  }
+}
+
+function applyEmbedClass() {
+  const embed = isEmbedMode();
+  document.documentElement.classList.toggle("embed", embed);
+  document.body.classList.toggle("embed", embed);
+  return embed;
+}
+
+const embedded = applyEmbedClass();
 
 function setConnectionStatus(kind, label) {
   statusDotEl.classList.remove("online", "offline");
@@ -20,7 +42,8 @@ function setConnectionStatus(kind, label) {
 function wsUrl() {
   const loc = window.location;
   const scheme = loc.protocol === "https:" ? "wss" : "ws";
-  return `${scheme}://${loc.host}/ws/terminal`;
+  const basePath = loc.pathname.startsWith("/claudecode") ? "/claudecode" : "";
+  return `${scheme}://${loc.host}${basePath}/ws/terminal`;
 }
 
 function ensureTerm() {
@@ -80,26 +103,17 @@ function disconnect() {
     socket = null;
   }
   connectBtn.disabled = false;
-  apiKeyInput.disabled = false;
   disconnectBtn.disabled = true;
   setConnectionStatus("offline", "Disconnected");
 }
 
 function connect() {
-  const anthropicApiKey = apiKeyInput.value.trim();
-  if (!anthropicApiKey) {
-    setConnectionStatus("offline", "Enter an Anthropic API key");
-    apiKeyInput.focus();
-    return;
-  }
-
   disconnect();
   ensureTerm();
   term.reset();
 
   setConnectionStatus(null, "Connecting…");
   connectBtn.disabled = true;
-  apiKeyInput.disabled = true;
   disconnectBtn.disabled = false;
 
   const ws = new WebSocket(wsUrl());
@@ -109,12 +123,7 @@ function connect() {
 
   ws.onopen = () => {
     wsOpened = true;
-    ws.send(
-      JSON.stringify({
-        type: "start",
-        anthropic_api_key: anthropicApiKey,
-      })
-    );
+    ws.send(JSON.stringify({ type: "start" }));
     setConnectionStatus("online", "Starting Claude Code");
     scheduleFit();
   };
@@ -145,7 +154,6 @@ function connect() {
   ws.onclose = (ev) => {
     if (socket === ws) socket = null;
     connectBtn.disabled = false;
-    apiKeyInput.disabled = false;
     disconnectBtn.disabled = true;
     const reason = ev.reason ? `: ${ev.reason}` : "";
     const detail = `code ${ev.code}${reason}`;
@@ -165,4 +173,13 @@ disconnectBtn.addEventListener("click", () => disconnect());
 window.addEventListener("resize", scheduleFit);
 if (window.visualViewport) {
   window.visualViewport.addEventListener("resize", scheduleFit);
+}
+
+if (terminalWrapEl && typeof ResizeObserver !== "undefined") {
+  const ro = new ResizeObserver(() => scheduleFit());
+  ro.observe(terminalWrapEl);
+}
+
+if (embedded) {
+  connect();
 }
