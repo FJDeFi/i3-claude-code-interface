@@ -23,6 +23,7 @@ from starlette.websockets import WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 START_MESSAGE_TIMEOUT_SECONDS = 3.0
+OPENCLAW_ENV_FILE = Path("/etc/openclaw.env")
 
 
 @dataclass(frozen=True)
@@ -86,9 +87,7 @@ def build_remote_command_argv(api_key: Optional[str] = None) -> Tuple[str, ...]:
     """
 
     remote_cmd = os.getenv("SSH_REMOTE_COMMAND", "").strip()
-    effective_api_key = (
-        api_key.strip() if api_key is not None else os.getenv("ANTHROPIC_API_KEY", "").strip()
-    )
+    effective_api_key = _resolve_anthropic_api_key(api_key)
     claude_cmd = os.getenv("CLAUDE_CODE_CMD", "claude").strip() or "claude"
 
     parts: List[str] = []
@@ -103,6 +102,38 @@ def build_remote_command_argv(api_key: Optional[str] = None) -> Tuple[str, ...]:
         inner = "; ".join(parts)
         return ("bash", "-lc", inner)
     return ("/bin/bash", "-il")
+
+
+def _resolve_anthropic_api_key(api_key: Optional[str] = None) -> str:
+    """Resolve the key from the browser, service env, or OpenClaw env file."""
+
+    if api_key is not None:
+        return api_key.strip()
+
+    env_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    if env_key:
+        return env_key
+
+    env_file = Path(os.getenv("OPENCLAW_ENV_FILE", str(OPENCLAW_ENV_FILE))).expanduser()
+    return _read_env_file_value(env_file, "ANTHROPIC_API_KEY") or ""
+
+
+def _read_env_file_value(path: Path, name: str) -> Optional[str]:
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return None
+
+    prefix = f"{name}="
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or not line.startswith(prefix):
+            continue
+        value = line[len(prefix) :].strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        return value.strip() or None
+    return None
 
 
 def argv_to_remote_exec_string(argv: Tuple[str, ...]) -> str:

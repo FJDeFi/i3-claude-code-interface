@@ -55,12 +55,14 @@ def test_build_remote_command_login_shell(monkeypatch):
         "CLAUDE_CODE_CMD",
     ):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("OPENCLAW_ENV_FILE", "/tmp/i3-claude-code-interface-missing.env")
     argv = ssh_terminal.build_remote_command_argv()
     assert argv == ("/bin/bash", "-il")
 
 
 def test_build_remote_command_with_api_key(monkeypatch):
     monkeypatch.delenv("SSH_REMOTE_COMMAND", raising=False)
+    monkeypatch.delenv("OPENCLAW_ENV_FILE", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-secret")
     monkeypatch.setenv("CLAUDE_CODE_CMD", "claude")
     argv = ssh_terminal.build_remote_command_argv()
@@ -70,8 +72,23 @@ def test_build_remote_command_with_api_key(monkeypatch):
     assert "exec" in inner and "claude" in inner
 
 
+def test_build_remote_command_with_openclaw_env_file(monkeypatch, tmp_path):
+    env_file = tmp_path / "openclaw.env"
+    env_file.write_text("OPENAI_API_KEY=unused\nANTHROPIC_API_KEY=sk-ant-file-secret\n")
+    monkeypatch.delenv("SSH_REMOTE_COMMAND", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("OPENCLAW_ENV_FILE", str(env_file))
+    monkeypatch.setenv("CLAUDE_CODE_CMD", "claude")
+    argv = ssh_terminal.build_remote_command_argv()
+    assert argv[0] == "bash" and argv[1] == "-lc"
+    inner = argv[2]
+    assert "sk-ant-file-secret" in inner
+    assert "exec" in inner and "claude" in inner
+
+
 def test_build_remote_command_with_session_api_key(monkeypatch):
     monkeypatch.delenv("SSH_REMOTE_COMMAND", raising=False)
+    monkeypatch.delenv("OPENCLAW_ENV_FILE", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-env-secret")
     monkeypatch.setenv("CLAUDE_CODE_CMD", "claude")
     argv = ssh_terminal.build_remote_command_argv("sk-ant-session-secret")
