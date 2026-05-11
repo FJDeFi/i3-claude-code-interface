@@ -38,6 +38,50 @@
 
         <div class="terminal-wrap" id="terminal-wrap"></div>
       </section>
+
+      <section class="panel token-panel hidden" id="token-management-panel">
+        <header class="panel-header">
+          <div>
+            <h2>Token Management</h2>
+            <p>Owner and administrator access only.</p>
+          </div>
+          <div class="panel-buttons">
+            <button class="ghost-button" id="refresh-tokens-btn" type="button">Refresh</button>
+          </div>
+        </header>
+
+        <div class="token-status" id="token-status"></div>
+
+        <form class="token-form" id="create-token-form">
+          <label class="token-field">
+            <span>TTL</span>
+            <div class="token-field__row">
+              <input id="token-ttl-value" type="number" min="1" step="1" placeholder="30" />
+              <select id="token-ttl-unit">
+                <option value="minutes" selected>Minutes</option>
+                <option value="hours">Hours</option>
+                <option value="days">Days</option>
+              </select>
+            </div>
+          </label>
+
+          <label class="token-field">
+            <span>Guest access</span>
+            <select id="token-access-type">
+              <option value="viewer" selected>Viewer (Read-only)</option>
+              <option value="editor">Editor (Read/Write/Execute)</option>
+            </select>
+          </label>
+
+          <div class="token-form__actions">
+            <button class="primary-button" id="create-token-btn" type="submit">Create guest token</button>
+          </div>
+        </form>
+
+        <section class="token-result hidden" id="token-result"></section>
+
+        <div class="token-list" id="token-list"></div>
+      </section>
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
