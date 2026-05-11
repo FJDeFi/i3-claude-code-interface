@@ -108,6 +108,15 @@ async def terminal_socket(websocket: WebSocket) -> None:
         await websocket.close(code=4403)
         return
 
+    # Block guest tokens that only have viewer access from opening a terminal
+    if session.get("role") == "guest" and session.get("accessType", "viewer") == "viewer":
+        await websocket.accept()
+        await websocket.send_text(
+            json.dumps({"type": "error", "message": "Access denied: viewer tokens cannot use the terminal"})
+        )
+        await websocket.close(code=4403)
+        return
+
     websocket.state.token_meta = session
     await run_terminal_bridge(websocket)
 

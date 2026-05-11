@@ -17,6 +17,7 @@ let term = null;
 let fitAddon = null;
 let fitFrame = 0;
 let observedTerminalSize = '';
+let tokenRefreshTimer = null;
 /** @type {WebSocket | null} */
 let socket = null;
 
@@ -261,6 +262,22 @@ async function copyToken(token) {
   }
 }
 
+function getShareableTokenLink(token) {
+  const url = new URL('/claudecode/', window.location.origin);
+  url.searchParams.set('claudecodeToken', token);
+  return url.toString();
+}
+
+async function copyShareableTokenLink(token) {
+  const link = getShareableTokenLink(token);
+  try {
+    await navigator.clipboard.writeText(link);
+    setTokenStatus('Shareable link copied to clipboard.', 'is-success');
+  } catch {
+    setTokenStatus('Could not copy the shareable link. Please copy it manually.', 'is-error');
+  }
+}
+
 function renderTokenResult(tokenInfo) {
   if (!tokenResultEl) return;
   if (!tokenInfo) {
@@ -270,21 +287,22 @@ function renderTokenResult(tokenInfo) {
   }
 
   const ttlText = tokenInfo.ttlSeconds ? `${tokenInfo.ttlSeconds} seconds` : 'never expires';
+  const shareableLink = getShareableTokenLink(tokenInfo.token || '');
   tokenResultEl.classList.remove('hidden');
   tokenResultEl.innerHTML = `
     <p class="token-result__title">New guest token created</p>
     <p class="token-result__meta">Access: <strong>${escapeHtml(tokenInfo.accessType || 'viewer')}</strong> · TTL: <strong>${escapeHtml(ttlText)}</strong></p>
     <div class="token-result__token">
-      <span>${escapeHtml(tokenInfo.token || '')}</span>
-      <button class="ghost-button" type="button" data-copy-token="${escapeHtml(tokenInfo.token || '')}">Copy</button>
+      <span>${escapeHtml(shareableLink)}</span>
+      <button class="ghost-button" type="button" data-copy-link="${escapeHtml(tokenInfo.token || '')}">Copy link</button>
     </div>
-    <p class="token-result__meta">This token is shown once. Store it now if you need to share it later.</p>
+    <p class="token-result__meta">This link is shown once. Copy it now if you need to share it later.</p>
   `;
 
-  const copyButton = tokenResultEl.querySelector('[data-copy-token]');
-  if (copyButton) {
-    copyButton.addEventListener('click', () => {
-      void copyToken(copyButton.getAttribute('data-copy-token') || '');
+  const copyLinkButton = tokenResultEl.querySelector('[data-copy-link]');
+  if (copyLinkButton) {
+    copyLinkButton.addEventListener('click', () => {
+      void copyShareableTokenLink(copyLinkButton.getAttribute('data-copy-link') || '');
     });
   }
 }
@@ -357,6 +375,20 @@ async function loadTokens() {
 
   renderTokens(payload.tokens || []);
   setTokenStatus(`Loaded ${String((payload.tokens || []).length)} token(s).`, 'is-success');
+}
+
+function stopTokenAutoRefresh() {
+  if (tokenRefreshTimer) {
+    clearInterval(tokenRefreshTimer);
+    tokenRefreshTimer = null;
+  }
+}
+
+function startTokenAutoRefresh() {
+  stopTokenAutoRefresh();
+  tokenRefreshTimer = window.setInterval(() => {
+    void loadTokens();
+  }, 3000);
 }
 
 function ttlSecondsFromForm() {
@@ -448,6 +480,7 @@ function initTokenManagement() {
   tokenManagementPanelEl.classList.remove('hidden');
   setTokenStatus(`Signed in as ${session.role || 'owner'}.`, 'is-success');
   void loadTokens();
+  startTokenAutoRefresh();
 
   if (createTokenFormEl) {
     createTokenFormEl.addEventListener('submit', (event) => {
@@ -461,6 +494,8 @@ function initTokenManagement() {
     });
   }
 }
+
+window.addEventListener('beforeunload', stopTokenAutoRefresh);
 
 connectionToggleBtn.addEventListener('click', () => {
   if (connectionToggleBtn.dataset.state === 'disconnect') {
