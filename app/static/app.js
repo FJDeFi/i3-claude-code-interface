@@ -83,6 +83,18 @@ function wsUrl() {
   return `${scheme}://${loc.host}${basePath}/ws/terminal${loc.search || ''}`;
 }
 
+function apiPath(path) {
+  if (/^https?:\/\//i.test(path) || path.startsWith('//')) {
+    return path;
+  }
+
+  const basePath = window.location.pathname.startsWith('/claudecode') ? '/claudecode' : '';
+  if (!basePath) return path;
+  if (path.startsWith(basePath + '/')) return path;
+  if (path.startsWith('/')) return `${basePath}${path}`;
+  return `${basePath}/${path}`;
+}
+
 function ensureTerm() {
   if (term) return;
   term = new Terminal({
@@ -215,7 +227,7 @@ function apiHeaders(extraHeaders = {}) {
 
 async function apiFetch(path, options = {}) {
   const headers = apiHeaders(options.headers || {});
-  return fetch(path, {
+  return fetch(apiPath(path), {
     ...options,
     headers,
   });
