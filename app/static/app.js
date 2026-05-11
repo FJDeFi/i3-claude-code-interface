@@ -295,7 +295,7 @@ function renderTokenResult(tokenInfo) {
     <p class="token-result__meta">Access: <strong>${escapeHtml(tokenInfo.accessType || 'viewer')}</strong> · TTL: <strong>${escapeHtml(ttlText)}</strong></p>
     <div class="token-result__token">
       <span>${escapeHtml(shareableLink)}</span>
-      <button class="ghost-button" type="button" data-copy-link="${escapeHtml(tokenInfo.token || '')}">Copy link</button>
+      <button class="ghost-button token-result__copy-button" type="button" data-copy-link="${escapeHtml(tokenInfo.token || '')}">Copy link</button>
     </div>
     <p class="token-result__meta">This link is shown once. Copy it now if you need to share it later.</p>
   `;
