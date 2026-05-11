@@ -254,11 +254,12 @@ function maskToken(token) {
 }
 
 async function copyToken(token) {
+  const link = getShareableTokenLink(token);
   try {
-    await navigator.clipboard.writeText(token);
-    setTokenStatus('Token copied to clipboard.', 'is-success');
+    await navigator.clipboard.writeText(link);
+    setTokenStatus('Shareable link copied to clipboard.', 'is-success');
   } catch {
-    setTokenStatus('Could not copy token. Please copy it manually.', 'is-error');
+    setTokenStatus('Could not copy the shareable link. Please copy it manually.', 'is-error');
   }
 }
 
