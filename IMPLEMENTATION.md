@@ -25,6 +25,59 @@ flowchart LR
   `WebSocket /ws/terminal`.
 - [`app/static/`](app/static/) — HTML/CSS and client script that wires xterm
   to the WebSocket (binary frames for terminal data, text JSON for resize).
+- [`app/token.py`](app/token.py) — Redis-backed token storage, validation, and
+  TTL management. Tokens store role, access type, and metadata.
+
+## Authentication & Token System
+
+Access to the web UI and terminal is gated by **tokens**. The server validates
+tokens against **Redis**, enforcing **role-based access control**:
+
+- **`owner`** tokens: full access (terminal, token management).
+- **`administrator`/`admin`** tokens: same as owner.
+- **`guest` + `viewer`** tokens: read-only; blocked from opening a terminal.
+- **`guest` + `editor`** tokens: terminal access (future use).
+
+### Token lifecycle
+
+1. An **owner** user creates a **guest token** via the web UI (**POST `/api/tokens`**).
+2. The server stores the token in Redis with a TTL (time-to-live) and role metadata.
+3. The guest can use the token in the URL (`?claudecodeToken=...`) or header
+   (`X-Claude-Code-Token: ...`) to access the UI.
+4. When connecting to the terminal (**WebSocket `/ws/terminal`**), the server:
+   - Validates the token (must exist, be active, and not expired).
+   - **Blocks viewer-role tokens** from opening the terminal (WebSocket closes with
+     error code `4403`).
+   - Allows owner/admin/editor tokens to proceed.
+5. The **owner** can revoke a token at any time (**DELETE `/api/tokens/{token}`**).
+
+### API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/` | token | Serve UI (redirects to `rejected.html` if no valid token) |
+| `GET` | `/health` | none | Health check |
+| `GET` | `/api/tokens` | owner/admin | List all tokens |
+| `POST` | `/api/tokens` | owner/admin | Create a new guest token |
+| `DELETE` | `/api/tokens/{token}` | owner/admin | Revoke a token |
+| `WebSocket` | `/ws/terminal` | token (no viewer) | PTY bridge (denied for viewer-role guests) |
+
+### Token metadata fields
+
+```json
+{
+  "token": "hex64string",
+  "role": "owner|guest",
+  "status": "active|revoked",
+  "accessType": "viewer|editor",
+  "createdAt": "2026-05-14T12:30:00Z",
+  "createdBy": "owner_token_hash",
+  "deploymentId": "optional_string",
+  "ownerDeploymentId": "optional_string",
+  "ttlSeconds": 3600,
+  "expiresAt": "2026-05-14T13:30:00Z"
+}
+```
 
 ### Environment variables
 
@@ -41,11 +94,38 @@ flowchart LR
 | `CLAUDE_CODE_CMD` | no | Default `claude` |
 | `SSH_TERM_TYPE` | no | Default `xterm-256color` |
 | `SSH_INITIAL_COLS` / `SSH_INITIAL_ROWS` | no | Initial PTY size before the client sends resize |
+| `CLAUDE_CODE_REDIS_URL` | no | Redis connection string; default `redis://127.0.0.1:6379` |
+
+### Client-side token management
+
+The web UI provides a **token management panel** (visible to owner/admin tokens only):
+
+- **Create guest token** — Select access type (`viewer` or `editor`) and TTL
+  (minutes, hours, or days), then create. The resulting **shareable link** 
+  (`https://<host>/claudecode/?claudecodeToken=...`) is displayed once and can
+  be copied with a single click.
+- **Token list** — Shows all active and revoked tokens with their role, access
+  type, creation date, and TTL. Each token has **Copy** (copies shareable link)
+  and **Revoke** buttons.
+- **Auto-refresh** — Token list refreshes every 3 seconds while the panel is
+  visible, so revoked or expired tokens appear up-to-date.
 
 ### Security
 
 This service can reach any host the SSH key allows. Run it behind TLS, limit
 network access, and treat the host like a bastion.
+
+**Token & Redis security:**
+
+- Tokens are stored in **Redis** with an automatic TTL; expired tokens are
+  automatically deleted.
+- Always run Redis **behind a firewall** and restrict network access to the
+  application server only (do not expose Redis publicly).
+- Use **strong, unique tokens** (the server generates 32-byte hex strings).
+- **Viewer-role tokens** are explicitly **blocked from terminal access** at the
+  WebSocket layer (error code `4403`), preventing privilege escalation.
+- Owner tokens should be treated like passwords; consider rotating them
+  periodically or using short-lived token chains.
 
 ### nginx reverse proxy
 
