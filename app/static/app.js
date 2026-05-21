@@ -13,10 +13,12 @@ const tokenTtlValueEl = document.querySelector('#token-ttl-value');
 const tokenTtlUnitEl = document.querySelector('#token-ttl-unit');
 const tokenAccessTypeEl = document.querySelector('#token-access-type');
 const tokenSessionSelectEl = document.querySelector('#token-session-select');
-const sessionsListEl = document.querySelector('#sessions-list');
-const createSessionFormEl = document.querySelector('#create-session-form');
-const sessionNameInputEl = document.querySelector('#session-name-input');
-const sessionPathInputEl = document.querySelector('#session-path-input');
+const sessionSelectEl = document.querySelector('#session-select');
+const sessionModalEl = document.querySelector('#session-modal');
+const sessionModalFormEl = document.querySelector('#session-modal-form');
+const sessionModalNameEl = document.querySelector('#session-modal-name');
+const sessionModalPathEl = document.querySelector('#session-modal-path');
+const sessionModalCloseEl = document.querySelector('#session-modal-close');
 
 let term = null;
 let fitAddon = null;
@@ -178,15 +180,9 @@ function connect() {
 
   ws.onopen = () => {
     wsOpened = true;
-    // Include optional tmux session from the URL if present
     let startPayload = { type: 'start' };
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const sessionParam = params.get('session');
-      if (sessionParam) startPayload.session = sessionParam;
-    } catch (e) {
-      // ignore
-    }
+    const selected = getSelectedSession();
+    if (selected) startPayload.session = selected;
     ws.send(JSON.stringify(startPayload));
     setConnectionStatus('online', 'Starting Claude Code');
     scheduleFit();
@@ -405,8 +401,25 @@ function renderTokens(tokens) {
   });
 }
 
+function getSelectedSession() {
+  const value = sessionSelectEl?.value;
+  if (!value || value === '__create__') return '';
+  return value;
+}
+
+function openSessionModal() {
+  if (!sessionModalEl) return;
+  sessionModalEl.classList.remove('hidden');
+  sessionModalNameEl?.focus();
+}
+
+function closeSessionModal() {
+  if (!sessionModalEl) return;
+  sessionModalEl.classList.add('hidden');
+  if (sessionModalFormEl) sessionModalFormEl.reset();
+}
+
 async function loadSessions() {
-  if (!sessionsListEl) return [];
   setTokenStatus('Loading sessions…', '');
   const resp = await apiFetch('/api/claudecode/sessions');
   const payload = await resp.json().catch(() => ({}));
@@ -414,69 +427,44 @@ async function loadSessions() {
     setTokenStatus(payload.detail || 'Failed to load sessions.', 'is-error');
     return [];
   }
-  renderSessions(payload.sessions || []);
+  renderSessionSelect(payload.sessions || []);
+  renderTokenSessionOptions(payload.sessions || []);
   setTokenStatus(`Loaded ${String((payload.sessions || []).length)} session(s).`, 'is-success');
   return payload.sessions || [];
 }
 
-function renderSessions(sessions) {
-  if (!sessionsListEl) return;
-  if (!Array.isArray(sessions) || sessions.length === 0) {
-    sessionsListEl.innerHTML = '<div class="empty-state"><p>No sessions found.</p></div>';
-  } else {
-    sessionsListEl.innerHTML = sessions
-      .map((name) => `
-        <div class="session-item">
-          <span class="session-name">${escapeHtml(name)}</span>
-          <div class="session-actions">
-            <button class="ghost-button" data-session-connect="${escapeHtml(name)}">Connect</button>
-            <button class="ghost-button danger" data-session-delete="${escapeHtml(name)}">Delete</button>
-          </div>
-        </div>
-      `)
-      .join('');
+function renderSessionSelect(sessions) {
+  if (!sessionSelectEl) return;
+  const current = sessionSelectEl.value;
+  sessionSelectEl.innerHTML = '';
+  sessionSelectEl.appendChild(new Option('Create a new session', '__create__'));
+  const sorted = (sessions || []).slice().sort();
+  for (const s of sorted) {
+    if (!s) continue;
+    sessionSelectEl.appendChild(new Option(s, s));
   }
-
-  // Also populate the token-session-select options
-  const select = document.querySelector('#token-session-select');
-  if (select) {
-    // keep the first option (All sessions)
-    const existing = Array.from(select.options).filter((o) => o.value === '*');
-    select.innerHTML = '';
-    if (existing.length) select.appendChild(existing[0]);
-    else select.appendChild(new Option('All sessions (owner)', '*'));
-    const sorted = (sessions || []).slice().sort();
-    for (const s of sorted) {
-      if (s === '*' || s === '') continue;
-      const opt = new Option(s, s);
-      select.appendChild(opt);
-    }
+  if (current && current !== '__create__') {
+    sessionSelectEl.value = current;
   }
-
-  // Wire up connect/delete buttons
-  sessionsListEl.querySelectorAll('[data-session-delete]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const name = btn.getAttribute('data-session-delete');
-      if (!confirm(`Delete session ${name}?`)) return;
-      void deleteSession(name);
-    });
-  });
-  sessionsListEl.querySelectorAll('[data-session-connect]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const name = btn.getAttribute('data-session-connect');
-      // open terminal with session in URL
-      const url = new URL(window.location.href);
-      url.searchParams.set('session', name);
-      window.location.href = url.toString();
-    });
-  });
 }
 
-async function createSession(event) {
+function renderTokenSessionOptions(sessions) {
+  if (!tokenSessionSelectEl) return;
+  const existing = Array.from(tokenSessionSelectEl.options).filter((o) => o.value === '*');
+  tokenSessionSelectEl.innerHTML = '';
+  if (existing.length) tokenSessionSelectEl.appendChild(existing[0]);
+  else tokenSessionSelectEl.appendChild(new Option('All sessions (owner)', '*'));
+  const sorted = (sessions || []).slice().sort();
+  for (const s of sorted) {
+    if (!s || s === '*') continue;
+    tokenSessionSelectEl.appendChild(new Option(s, s));
+  }
+}
+
+async function createSessionFromModal(event) {
   if (event) event.preventDefault();
-  if (!createSessionFormEl) return;
-  const name = (sessionNameInputEl?.value || '').trim();
-  const path = (sessionPathInputEl?.value || '').trim() || undefined;
+  const name = (sessionModalNameEl?.value || '').trim();
+  const path = (sessionModalPathEl?.value || '').trim() || undefined;
   if (!name) {
     setTokenStatus('Enter a session name.', 'is-error');
     return;
@@ -493,20 +481,9 @@ async function createSession(event) {
     return;
   }
   setTokenStatus('Session created.', 'is-success');
-  if (createSessionFormEl) createSessionFormEl.reset();
+  closeSessionModal();
   await loadSessions();
-}
-
-async function deleteSession(name) {
-  setTokenStatus('Deleting session…', '');
-  const resp = await apiFetch(`/api/claudecode/sessions/${encodeURIComponent(name)}`, { method: 'DELETE' });
-  const payload = await resp.json().catch(() => ({}));
-  if (!resp.ok) {
-    setTokenStatus(payload.detail || 'Failed to delete session.', 'is-error');
-    return;
-  }
-  setTokenStatus('Session deleted.', 'is-success');
-  await loadSessions();
+  if (sessionSelectEl) sessionSelectEl.value = name;
 }
 
 async function loadTokens() {
@@ -658,9 +635,29 @@ function initTokenManagement() {
     });
   }
 
-  if (createSessionFormEl) {
-    createSessionFormEl.addEventListener('submit', (ev) => {
-      void createSession(ev);
+  if (sessionSelectEl) {
+    sessionSelectEl.addEventListener('change', () => {
+      if (sessionSelectEl.value === '__create__') {
+        openSessionModal();
+      }
+    });
+  }
+
+  if (sessionModalFormEl) {
+    sessionModalFormEl.addEventListener('submit', (ev) => {
+      void createSessionFromModal(ev);
+    });
+  }
+
+  if (sessionModalCloseEl) {
+    sessionModalCloseEl.addEventListener('click', () => {
+      closeSessionModal();
+    });
+  }
+
+  if (sessionModalEl) {
+    sessionModalEl.addEventListener('click', (ev) => {
+      if (ev.target === sessionModalEl) closeSessionModal();
     });
   }
 
@@ -672,6 +669,9 @@ function initTokenManagement() {
 }
 
 window.addEventListener('beforeunload', stopTokenAutoRefresh);
+window.addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') closeSessionModal();
+});
 
 connectionToggleBtn.addEventListener('click', () => {
   if (connectionToggleBtn.dataset.state === 'disconnect') {

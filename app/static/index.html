@@ -31,7 +31,13 @@
           <div>
             <h2>Terminal</h2>
           </div>
-          <div class="panel-buttons">
+          <div class="panel-buttons panel-buttons--terminal">
+            <div class="session-picker">
+              <label for="session-select">Select a session</label>
+              <select id="session-select">
+                <option value="__create__">Create a new session</option>
+              </select>
+            </div>
             <button class="primary-button" id="connection-toggle-btn" type="button">Connect</button>
           </div>
         </header>
@@ -53,7 +59,7 @@
         <div class="token-status" id="token-status"></div>
 
         <form class="token-form" id="create-token-form">
-          <label class="token-field">
+          <label class="token-field token-field--sessions">
             <span>TTL</span>
             <div class="token-field__row">
               <input id="token-ttl-value" type="number" min="1" step="1" placeholder="30" />
@@ -75,33 +81,18 @@
 
           <label class="token-field">
             <span>Sessions</span>
-            <select id="token-session-select" multiple size="4">
-              <option value="*">All sessions (owner)</option>
-            </select>
-            <p class="hint">Select sessions this token may attach to. Hold Ctrl/Cmd to select multiple.</p>
+            <div class="token-field__row token-field__row--sessions">
+              <select id="token-session-select" multiple size="4">
+                <option value="*">All sessions (owner)</option>
+              </select>
+              <p class="hint">Select sessions this token may attach to. Hold Ctrl/Cmd to select multiple.</p>
+            </div>
           </label>
 
           <div class="token-form__actions">
             <button class="primary-button" id="create-token-btn" type="submit">Create guest token</button>
           </div>
         </form>
-
-        <section class="sessions-section">
-          <header class="sessions-header">
-            <h3>Sessions</h3>
-            <p>Create and manage tmux sessions for shared terminals.</p>
-          </header>
-
-          <div class="sessions-controls">
-            <form id="create-session-form" class="create-session-form">
-              <input id="session-name-input" type="text" placeholder="session-name" />
-              <input id="session-path-input" type="text" placeholder="optional path (e.g. /home/user)" />
-              <button class="ghost-button" type="submit">Create session</button>
-            </form>
-          </div>
-
-          <div class="sessions-list" id="sessions-list"></div>
-        </section>
 
         <section class="token-result hidden" id="token-result"></section>
 
@@ -112,5 +103,26 @@
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script src="static/app.js?v=20260505-clean-hero" defer></script>
+    <div class="modal hidden" id="session-modal" role="dialog" aria-modal="true">
+      <div class="modal__content">
+        <header class="modal__header">
+          <h3>Create a new session</h3>
+          <button class="ghost-button" id="session-modal-close" type="button">Close</button>
+        </header>
+        <form id="session-modal-form" class="modal__form">
+          <label>
+            <span>Session name</span>
+            <input id="session-modal-name" type="text" placeholder="session-name" />
+          </label>
+          <label>
+            <span>Optional path</span>
+            <input id="session-modal-path" type="text" placeholder="/home/user" />
+          </label>
+          <div class="modal__actions">
+            <button class="primary-button" type="submit">Create session</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </body>
 </html>

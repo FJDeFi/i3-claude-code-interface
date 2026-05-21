@@ -247,6 +247,30 @@ code {
   gap: 10px;
 }
 
+.panel-buttons--terminal {
+  align-items: center;
+  gap: 14px;
+}
+
+.session-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.session-picker select {
+  min-height: 42px;
+  padding: 0 12px;
+  color: var(--text);
+  border: 1px solid rgba(239, 128, 28, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
 .token-status {
   min-height: 22px;
   margin-bottom: 12px;
@@ -290,9 +314,27 @@ code {
   font-weight: 600;
 }
 
+.token-field--sessions {
+  grid-column: 1 / -1;
+}
+
 .token-field__row {
   display: flex;
   gap: 10px;
+}
+
+.token-field__row--sessions {
+  align-items: center;
+}
+
+.token-field__row--sessions select {
+  max-width: 280px;
+}
+
+.token-field__row--sessions .hint {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--muted);
 }
 
 .token-field input,
@@ -309,6 +351,66 @@ code {
 .token-form__actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(25, 20, 14, 0.45);
+  backdrop-filter: blur(6px);
+  z-index: 40;
+}
+
+.modal__content {
+  width: min(520px, calc(100% - 32px));
+  padding: 20px;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: var(--card-strong);
+  box-shadow: var(--shadow);
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.modal__header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.modal__form {
+  display: grid;
+  gap: 12px;
+}
+
+.modal__form label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.modal__form input {
+  min-height: 42px;
+  padding: 0 12px;
+  color: var(--text);
+  border: 1px solid rgba(239, 128, 28, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
 }
 
 .token-result {
