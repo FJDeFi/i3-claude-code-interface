@@ -76,7 +76,7 @@ def load_ssh_bridge_config() -> SshBridgeConfig:
     )
 
 
-def build_remote_command_argv(api_key: Optional[str] = None) -> Tuple[str, ...]:
+def build_remote_command_argv(api_key: Optional[str] = None, tmux_session: Optional[str] = None) -> Tuple[str, ...]:
     """Return argv for the remote process (executed under a PTY).
 
     * If ``SSH_REMOTE_COMMAND`` is set, run ``bash -lc`` with optional
@@ -101,6 +101,10 @@ def build_remote_command_argv(api_key: Optional[str] = None) -> Tuple[str, ...]:
         parts.append(f"exec {shlex.quote(claude_cmd)}")
         inner = "; ".join(parts)
         return ("bash", "-lc", inner)
+    # If a tmux session is requested, attach to it. This assumes tmux is
+    # available on the remote host and the session exists (owner may create it).
+    if tmux_session:
+        return ("tmux", "attach", "-t", tmux_session)
     return ("/bin/bash", "-il")
 
 
@@ -166,7 +170,12 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
         return
 
     try:
-        api_key = await _receive_start_api_key(websocket)
+        start = await _receive_start_api_key(websocket)
+        # start can be a tuple (api_key, tmux_session) or just api_key
+        if isinstance(start, tuple):
+            api_key, tmux_session = start
+        else:
+            api_key, tmux_session = start, None
     except WebSocketDisconnect:
         return
     cols, rows = _default_term_size()
@@ -185,7 +194,7 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
         await websocket.close(code=4401)
         return
 
-    argv = build_remote_command_argv(api_key)
+    argv = build_remote_command_argv(api_key, tmux_session=tmux_session)
     remote_exec = argv_to_remote_exec_string(argv)
     try:
         async with conn.create_process(
@@ -240,9 +249,14 @@ async def _receive_start_api_key(websocket: WebSocket) -> Optional[str]:
         if payload.get("type") != "start":
             continue
         api_key = payload.get("anthropic_api_key")
+        # Optional tmux session name for attaching to a shared session
+        tmux_session = payload.get("session")
         if not isinstance(api_key, str):
             return None
-        return api_key.strip() or None
+        api_key_val = api_key.strip() or None
+        if tmux_session is not None and isinstance(tmux_session, str) and tmux_session.strip():
+            return (api_key_val, tmux_session.strip())
+        return api_key_val
 
 
 def _default_term_size() -> Tuple[int, int]:

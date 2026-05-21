@@ -11,7 +11,10 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .ssh_terminal import run_terminal_bridge
-from .token import create_token, list_tokens as redis_list_tokens, revoke_token, validate_token
+from .token import create_token, get_token_record, list_tokens as redis_list_tokens, revoke_token, validate_token
+import re
+import shlex
+import subprocess
 
 
 app = FastAPI(title="Claude Code SSH terminal bridge")
@@ -156,6 +159,7 @@ async def create_guest_token(request: Request) -> JSONResponse:
         ttl_seconds=ttl_seconds,
         role="guest",
         created_by=session["token"],
+        session=(lambda s: (','.join(s) if isinstance(s, list) else str(s)))(body.get('session')) if body.get('session') is not None else None,
     )
     return JSONResponse(created, status_code=201)
 
@@ -165,7 +169,93 @@ async def delete_token(token: str, request: Request) -> JSONResponse:
     session = await _require_privileged_session(request)
     if not session:
         return JSONResponse(status_code=403, content={"detail": "Owner/admin token required"})
+    record = await get_token_record(token)
+    if record and record.get("role") == "owner":
+        return JSONResponse(status_code=403, content={"detail": "Owner tokens cannot be revoked"})
     revoked = await revoke_token(token)
     if not revoked:
         return JSONResponse(status_code=404, content={"detail": "Token not found"})
     return JSONResponse({"status": "revoked", "token": token})
+
+
+def _safe_session_name(name: str) -> bool:
+    # Allow only alnum, underscore, hyphen
+    return bool(re.match(r'^[A-Za-z0-9_\-]+$', name))
+
+
+def _run_cmd(cmd: str) -> tuple[int, str, str]:
+    try:
+        completed = subprocess.run(shlex.split(cmd), capture_output=True, text=True, check=False)
+        return (completed.returncode, completed.stdout or "", completed.stderr or "")
+    except Exception as e:
+        return (255, "", str(e))
+
+
+@app.get("/api/claudecode/sessions")
+async def list_claudecode_sessions(request: Request) -> JSONResponse:
+    # Determine caller: privileged session or a token-based session
+    priv = await _require_privileged_session(request)
+    token_param = _extract_token_from_request(request)
+    token_record = None
+    if token_param:
+        token_record = await validate_token(token_param)
+
+    # If caller is neither privileged nor presenting a token, require auth
+    if not priv and not token_record:
+        return JSONResponse(status_code=403, content={"detail": "Owner/admin token or valid claude token required"})
+
+    # Run tmux ls
+    rc, out, err = _run_cmd("tmux ls")
+    sessions = []
+    if rc == 0 and out:
+        for line in out.splitlines():
+            parts = line.split(":", 1)
+            if parts:
+                sessions.append(parts[0])
+
+    # If token_record present and not privileged, filter sessions by token->session mapping
+    if token_record and not priv:
+        allowed = token_record.get("session") or "*"
+        if allowed != "*":
+            allowed_set = {s.strip() for s in allowed.split(",") if s.strip()}
+            sessions = [s for s in sessions if s in allowed_set]
+
+    return JSONResponse({"sessions": sessions})
+
+
+@app.post("/api/claudecode/sessions")
+async def create_claudecode_session(request: Request) -> JSONResponse:
+    session = await _require_privileged_session(request)
+    if not session:
+        return JSONResponse(status_code=403, content={"detail": "Owner/admin token required"})
+
+    body = await request.json()
+    name = str(body.get("name") or "").strip()
+    path = body.get("path") or None
+    if not name:
+        return JSONResponse(status_code=400, content={"detail": "Session name required"})
+    if not _safe_session_name(name):
+        return JSONResponse(status_code=400, content={"detail": "Invalid session name"})
+
+    cmd = f"tmux new -d -s {shlex.quote(name)}"
+    if path:
+        cmd = f"tmux new -d -s {shlex.quote(name)} -c {shlex.quote(path)}"
+
+    rc, out, err = _run_cmd(cmd)
+    if rc != 0:
+        return JSONResponse(status_code=500, content={"detail": "Failed to create session", "error": err})
+    return JSONResponse({"name": name})
+
+
+@app.delete("/api/claudecode/sessions/{name}")
+async def delete_claudecode_session(name: str, request: Request) -> JSONResponse:
+    session = await _require_privileged_session(request)
+    if not session:
+        return JSONResponse(status_code=403, content={"detail": "Owner/admin token required"})
+    if not _safe_session_name(name):
+        return JSONResponse(status_code=400, content={"detail": "Invalid session name"})
+
+    rc, out, err = _run_cmd(f"tmux kill-session -t {shlex.quote(name)}")
+    if rc != 0:
+        return JSONResponse(status_code=500, content={"detail": "Failed to delete session", "error": err})
+    return JSONResponse({"deleted": name})

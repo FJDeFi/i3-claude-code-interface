@@ -173,7 +173,16 @@ function connect() {
 
   ws.onopen = () => {
     wsOpened = true;
-    ws.send(JSON.stringify({ type: 'start' }));
+    // Include optional tmux session from the URL if present
+    let startPayload = { type: 'start' };
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const sessionParam = params.get('session');
+      if (sessionParam) startPayload.session = sessionParam;
+    } catch (e) {
+      // ignore
+    }
+    ws.send(JSON.stringify(startPayload));
     setConnectionStatus('online', 'Starting Claude Code');
     scheduleFit();
   };
@@ -343,8 +352,15 @@ function renderTokens(tokens) {
   tokenListEl.innerHTML = tokens
     .map((tokenInfo) => {
       const isRevoked = String(tokenInfo.status || '').toLowerCase() !== 'active';
+      const isOwnerToken = String(tokenInfo.role || '').toLowerCase() === 'owner';
+      const canRevoke = !isRevoked && !isOwnerToken;
       const ttlText = tokenInfo.ttlSeconds ? `${tokenInfo.ttlSeconds}s` : 'no expiry';
       const badge = isRevoked ? 'Revoked' : tokenInfo.accessType || 'viewer';
+      const revokeTitle = isOwnerToken
+        ? 'Owner tokens cannot be revoked.'
+        : isRevoked
+          ? 'Token is already revoked.'
+          : 'Revoke token';
       return `
         <article class="token-card">
           <div class="token-card__header">
@@ -363,7 +379,7 @@ function renderTokens(tokens) {
           </div>
           <div class="token-card__actions">
             <button class="ghost-button" type="button" data-copy-token="${escapeHtml(tokenInfo.token || '')}">Copy</button>
-            <button class="ghost-button" type="button" data-revoke-token="${escapeHtml(tokenInfo.token || '')}" ${isRevoked ? 'disabled' : ''}>Revoke</button>
+            <button class="ghost-button" type="button" data-revoke-token="${escapeHtml(tokenInfo.token || '')}" ${canRevoke ? '' : 'disabled'} title="${escapeHtml(revokeTitle)}">Revoke</button>
           </div>
         </article>
       `;

@@ -41,6 +41,7 @@ def _normalize_record(token: str, record: dict[str, str]) -> dict[str, Any]:
         "role": record.get("role") or "guest",
         "status": record.get("status") or "active",
         "accessType": record.get("accessType") or "viewer",
+        "session": record.get("session") or "*",
         "createdAt": record.get("createdAt"),
         "createdBy": record.get("createdBy") or None,
         "deploymentId": record.get("deploymentId") or None,
@@ -77,6 +78,7 @@ async def create_token(
     role: str = "guest",
     created_by: Optional[str] = None,
     deployment_id: Optional[str] = None,
+    session: Optional[str] = None,
 ) -> dict[str, Any]:
     token = secrets.token_hex(32)
     await store_token(
@@ -86,6 +88,7 @@ async def create_token(
         role=role,
         created_by=created_by,
         deployment_id=deployment_id,
+        session=session,
     )
     return {"token": token, **(await get_token_record(token) or {})}
 
@@ -98,6 +101,7 @@ async def store_token(
     role: str = "guest",
     created_by: Optional[str] = None,
     deployment_id: Optional[str] = None,
+    session: Optional[str] = None,
     status: str = "active",
     owner_deployment_id: Optional[str] = None,
 ) -> dict[str, Any]:
@@ -108,6 +112,11 @@ async def store_token(
         "accessType": access_type,
         "createdAt": _utc_now(),
     }
+    # session: either '*' for all sessions or comma-separated session ids
+    if session is None:
+        record["session"] = "*"
+    else:
+        record["session"] = session
     if created_by:
         record["createdBy"] = created_by
     if deployment_id:
@@ -145,6 +154,9 @@ async def revoke_token(token: str) -> bool:
     exists = await redis_client.exists(key)
     if not exists:
         return False
+    record = await redis_client.hgetall(key)
+    if record.get("role") == "owner":
+        return False
     await redis_client.hset(key, mapping={"status": "revoked"})
     await redis_client.sadd(TOKEN_INDEX_KEY, token)
     return True
@@ -158,4 +170,5 @@ async def create_owner_token(token: str, deployment_id: Optional[str] = None) ->
         deployment_id=deployment_id,
         owner_deployment_id=deployment_id,
         status="active",
+        session="*",
     )
