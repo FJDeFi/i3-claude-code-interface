@@ -378,6 +378,9 @@ function renderTokens(tokens) {
           : 'Revoke token';
       const sessionValue = String(tokenInfo.session || '*');
       const sessionMode = sessionValue === '*' ? 'all' : 'specific';
+      const sessionSummary = sessionMode === 'all'
+        ? 'All sessions'
+        : sessionValue.split(',').map((s) => s.trim()).filter(Boolean).join(', ') || 'None';
       return `
         <article class="token-card">
           <div class="token-card__header">
@@ -395,7 +398,7 @@ function renderTokens(tokens) {
             ${tokenInfo.expiresAt ? `<span>Expires: <strong>${escapeHtml(formatTokenDate(tokenInfo.expiresAt))}</strong></span>` : ''}
           </div>
           <div class="token-card__meta">
-            <span>Sessions:</span>
+            <span>Sessions: <strong>${escapeHtml(sessionSummary)}</strong></span>
             <div class="token-session-editor">
               <select data-token-session-mode="${escapeHtml(tokenInfo.token || '')}">
                 <option value="all" ${sessionMode === 'all' ? 'selected' : ''}>All sessions</option>
@@ -701,7 +704,7 @@ async function createGuestToken(event) {
       } else {
         if (selectedTokenSessions.length === 0) {
           setTokenStatus('Select at least one session for a specific-sessions token.', 'is-error');
-          openTokenSessionsModal();
+          openTokenSessionsModalForCreate();
           return;
         }
         sessionValue = selectedTokenSessions.join(',');
@@ -823,14 +826,14 @@ function initTokenManagement() {
   if (tokenSessionModeEl) {
     tokenSessionModeEl.addEventListener('change', () => {
       if (tokenSessionModeEl.value === 'specific') {
-        openTokenSessionsModal();
+        openTokenSessionsModalForCreate();
       } else {
         selectedTokenSessions = [];
       }
     });
     tokenSessionModeEl.addEventListener('click', () => {
       if (tokenSessionModeEl.value === 'specific') {
-        openTokenSessionsModal();
+        openTokenSessionsModalForCreate();
       }
     });
   }

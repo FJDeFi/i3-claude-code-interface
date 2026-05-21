@@ -529,6 +529,22 @@ code {
   flex-wrap: wrap;
 }
 
+.token-session-editor {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.token-session-editor select {
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--text);
+  border: 1px solid rgba(239, 128, 28, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
 .token-pill {
   display: inline-flex;
   align-items: center;

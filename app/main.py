@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .ssh_terminal import run_terminal_bridge
-from .token import create_token, get_token_record, list_tokens as redis_list_tokens, revoke_token, validate_token
+from .token import create_token, get_token_record, list_tokens as redis_list_tokens, revoke_token, validate_token, update_token_session
 import re
 import shlex
 import subprocess
@@ -176,6 +176,23 @@ async def delete_token(token: str, request: Request) -> JSONResponse:
     if not revoked:
         return JSONResponse(status_code=404, content={"detail": "Token not found"})
     return JSONResponse({"status": "revoked", "token": token})
+
+
+@app.patch("/api/tokens/{token}")
+async def update_token(token: str, request: Request) -> JSONResponse:
+    session = await _require_privileged_session(request)
+    if not session:
+        return JSONResponse(status_code=403, content={"detail": "Owner/admin token required"})
+    body = await request.json()
+    session_value = body.get("session")
+    if isinstance(session_value, list):
+        session_value = ",".join([str(s).strip() for s in session_value if str(s).strip()])
+    if isinstance(session_value, str):
+        session_value = session_value.strip() or "*"
+    updated = await update_token_session(token, session_value)
+    if not updated:
+        return JSONResponse(status_code=404, content={"detail": "Token not found or not editable"})
+    return JSONResponse(updated)
 
 
 def _safe_session_name(name: str) -> bool:

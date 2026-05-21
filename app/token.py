@@ -162,6 +162,23 @@ async def revoke_token(token: str) -> bool:
     return True
 
 
+async def update_token_session(token: str, session: Optional[str]) -> Optional[dict[str, Any]]:
+    if not token:
+        return None
+    redis_client = await get_redis()
+    key = token_key(token)
+    record = await redis_client.hgetall(key)
+    if not record:
+        return None
+    if record.get("role") == "owner":
+        return None
+    value = session or "*"
+    await redis_client.hset(key, mapping={"session": value})
+    await redis_client.sadd(TOKEN_INDEX_KEY, token)
+    record["session"] = value
+    return _normalize_record(token, record)
+
+
 async def create_owner_token(token: str, deployment_id: Optional[str] = None) -> dict[str, Any]:
     return await store_token(
         token,
