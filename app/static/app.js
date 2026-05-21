@@ -12,6 +12,11 @@ const createTokenBtnEl = document.querySelector('#create-token-btn');
 const tokenTtlValueEl = document.querySelector('#token-ttl-value');
 const tokenTtlUnitEl = document.querySelector('#token-ttl-unit');
 const tokenAccessTypeEl = document.querySelector('#token-access-type');
+const tokenSessionSelectEl = document.querySelector('#token-session-select');
+const sessionsListEl = document.querySelector('#sessions-list');
+const createSessionFormEl = document.querySelector('#create-session-form');
+const sessionNameInputEl = document.querySelector('#session-name-input');
+const sessionPathInputEl = document.querySelector('#session-path-input');
 
 let term = null;
 let fitAddon = null;
@@ -400,6 +405,110 @@ function renderTokens(tokens) {
   });
 }
 
+async function loadSessions() {
+  if (!sessionsListEl) return [];
+  setTokenStatus('Loading sessions…', '');
+  const resp = await apiFetch('/api/claudecode/sessions');
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    setTokenStatus(payload.detail || 'Failed to load sessions.', 'is-error');
+    return [];
+  }
+  renderSessions(payload.sessions || []);
+  setTokenStatus(`Loaded ${String((payload.sessions || []).length)} session(s).`, 'is-success');
+  return payload.sessions || [];
+}
+
+function renderSessions(sessions) {
+  if (!sessionsListEl) return;
+  if (!Array.isArray(sessions) || sessions.length === 0) {
+    sessionsListEl.innerHTML = '<div class="empty-state"><p>No sessions found.</p></div>';
+  } else {
+    sessionsListEl.innerHTML = sessions
+      .map((name) => `
+        <div class="session-item">
+          <span class="session-name">${escapeHtml(name)}</span>
+          <div class="session-actions">
+            <button class="ghost-button" data-session-connect="${escapeHtml(name)}">Connect</button>
+            <button class="ghost-button danger" data-session-delete="${escapeHtml(name)}">Delete</button>
+          </div>
+        </div>
+      `)
+      .join('');
+  }
+
+  // Also populate the token-session-select options
+  const select = document.querySelector('#token-session-select');
+  if (select) {
+    // keep the first option (All sessions)
+    const existing = Array.from(select.options).filter((o) => o.value === '*');
+    select.innerHTML = '';
+    if (existing.length) select.appendChild(existing[0]);
+    else select.appendChild(new Option('All sessions (owner)', '*'));
+    const sorted = (sessions || []).slice().sort();
+    for (const s of sorted) {
+      if (s === '*' || s === '') continue;
+      const opt = new Option(s, s);
+      select.appendChild(opt);
+    }
+  }
+
+  // Wire up connect/delete buttons
+  sessionsListEl.querySelectorAll('[data-session-delete]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const name = btn.getAttribute('data-session-delete');
+      if (!confirm(`Delete session ${name}?`)) return;
+      void deleteSession(name);
+    });
+  });
+  sessionsListEl.querySelectorAll('[data-session-connect]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const name = btn.getAttribute('data-session-connect');
+      // open terminal with session in URL
+      const url = new URL(window.location.href);
+      url.searchParams.set('session', name);
+      window.location.href = url.toString();
+    });
+  });
+}
+
+async function createSession(event) {
+  if (event) event.preventDefault();
+  if (!createSessionFormEl) return;
+  const name = (sessionNameInputEl?.value || '').trim();
+  const path = (sessionPathInputEl?.value || '').trim() || undefined;
+  if (!name) {
+    setTokenStatus('Enter a session name.', 'is-error');
+    return;
+  }
+  setTokenStatus('Creating session…', '');
+  const resp = await apiFetch('/api/claudecode/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, path }),
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    setTokenStatus(payload.detail || 'Failed to create session.', 'is-error');
+    return;
+  }
+  setTokenStatus('Session created.', 'is-success');
+  if (createSessionFormEl) createSessionFormEl.reset();
+  await loadSessions();
+}
+
+async function deleteSession(name) {
+  setTokenStatus('Deleting session…', '');
+  const resp = await apiFetch(`/api/claudecode/sessions/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    setTokenStatus(payload.detail || 'Failed to delete session.', 'is-error');
+    return;
+  }
+  setTokenStatus('Session deleted.', 'is-success');
+  await loadSessions();
+}
+
 async function loadTokens() {
   if (!tokenListEl) return;
   if (!isPrivilegedRole(session.role)) {
@@ -461,6 +570,23 @@ async function createGuestToken(event) {
 
   try {
     setTokenStatus('Creating token…', '');
+    // collect selected sessions from UI
+    let sessionValue = undefined;
+    try {
+      if (tokenSessionSelectEl) {
+        const opts = Array.from(tokenSessionSelectEl.selectedOptions || []).map((o) => o.value);
+        if (opts.length === 0) {
+          sessionValue = '*';
+        } else if (opts.includes('*')) {
+          sessionValue = '*';
+        } else {
+          sessionValue = opts.join(',');
+        }
+      }
+    } catch (e) {
+      sessionValue = undefined;
+    }
+
     const response = await apiFetch('/api/tokens', {
       method: 'POST',
       headers: {
@@ -469,6 +595,7 @@ async function createGuestToken(event) {
       body: JSON.stringify({
         accessType,
         ttlSeconds,
+        session: sessionValue,
       }),
     });
     const payload = await response.json().catch(() => ({}));
@@ -522,11 +649,18 @@ function initTokenManagement() {
   tokenManagementPanelEl.classList.remove('hidden');
   setTokenStatus(`Signed in as ${session.role || 'owner'}.`, 'is-success');
   void loadTokens();
+  void loadSessions();
   startTokenAutoRefresh();
 
   if (createTokenFormEl) {
     createTokenFormEl.addEventListener('submit', (event) => {
       void createGuestToken(event);
+    });
+  }
+
+  if (createSessionFormEl) {
+    createSessionFormEl.addEventListener('submit', (ev) => {
+      void createSession(ev);
     });
   }
 
