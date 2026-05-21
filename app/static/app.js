@@ -253,12 +253,36 @@ function maskToken(token) {
   return `${token.slice(0, 6)}…${token.slice(-4)}`;
 }
 
+async function writeTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  const fallbackField = document.createElement('textarea');
+  fallbackField.value = text;
+  fallbackField.setAttribute('readonly', 'readonly');
+  fallbackField.style.position = 'fixed';
+  fallbackField.style.opacity = '0';
+  fallbackField.style.left = '-9999px';
+  document.body.appendChild(fallbackField);
+  fallbackField.select();
+
+  try {
+    const copied = document.execCommand('copy');
+    return copied;
+  } finally {
+    document.body.removeChild(fallbackField);
+  }
+}
+
 async function copyToken(token) {
   const link = getShareableTokenLink(token);
   try {
-    await navigator.clipboard.writeText(link);
+    await writeTextToClipboard(link);
     setTokenStatus('Shareable link copied to clipboard.', 'is-success');
-  } catch {
+  } catch (error) {
+    console.warn('Failed to copy token link:', error);
     setTokenStatus('Could not copy the shareable link. Please copy it manually.', 'is-error');
   }
 }
@@ -272,9 +296,10 @@ function getShareableTokenLink(token) {
 async function copyShareableTokenLink(token) {
   const link = getShareableTokenLink(token);
   try {
-    await navigator.clipboard.writeText(link);
+    await writeTextToClipboard(link);
     setTokenStatus('Shareable link copied to clipboard.', 'is-success');
-  } catch {
+  } catch (error) {
+    console.warn('Failed to copy shareable token link:', error);
     setTokenStatus('Could not copy the shareable link. Please copy it manually.', 'is-error');
   }
 }
