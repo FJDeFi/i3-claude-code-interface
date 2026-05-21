@@ -12,7 +12,11 @@ const createTokenBtnEl = document.querySelector('#create-token-btn');
 const tokenTtlValueEl = document.querySelector('#token-ttl-value');
 const tokenTtlUnitEl = document.querySelector('#token-ttl-unit');
 const tokenAccessTypeEl = document.querySelector('#token-access-type');
-const tokenSessionSelectEl = document.querySelector('#token-session-select');
+const tokenSessionModeEl = document.querySelector('#token-session-mode');
+const tokenSessionsModalEl = document.querySelector('#token-sessions-modal');
+const tokenSessionsModalFormEl = document.querySelector('#token-sessions-modal-form');
+const tokenSessionsModalCloseEl = document.querySelector('#token-sessions-modal-close');
+const tokenSessionsListEl = document.querySelector('#token-sessions-list');
 const sessionSelectEl = document.querySelector('#session-select');
 const sessionModalEl = document.querySelector('#session-modal');
 const sessionModalFormEl = document.querySelector('#session-modal-form');
@@ -28,6 +32,11 @@ let tokenRefreshTimer = null;
 /** @type {WebSocket | null} */
 let socket = null;
 let lastSessionSelection = '';
+let selectedTokenSessions = [];
+const sessionRootByName = {};
+let allSessions = [];
+let tokenSessionsModalContext = { type: 'create', token: null };
+let tokenSessionsModalSelected = [];
 
 const session = window.__CLAUDE_CODE_SESSION__ || {};
 const sessionToken = getCurrentToken();
@@ -183,7 +192,11 @@ function connect() {
     wsOpened = true;
     let startPayload = { type: 'start' };
     const selected = getSelectedSession();
-    if (selected) startPayload.session = selected;
+    if (selected) {
+      startPayload.session = selected;
+      const rootDir = sessionRootByName[selected];
+      if (rootDir) startPayload.rootDir = rootDir;
+    }
     ws.send(JSON.stringify(startPayload));
     setConnectionStatus('online', 'Starting Claude Code');
     scheduleFit();
@@ -363,6 +376,8 @@ function renderTokens(tokens) {
         : isRevoked
           ? 'Token is already revoked.'
           : 'Revoke token';
+      const sessionValue = String(tokenInfo.session || '*');
+      const sessionMode = sessionValue === '*' ? 'all' : 'specific';
       return `
         <article class="token-card">
           <div class="token-card__header">
@@ -378,6 +393,16 @@ function renderTokens(tokens) {
             <span>Created: <strong>${escapeHtml(formatTokenDate(tokenInfo.createdAt))}</strong></span>
             <span>TTL: <strong>${escapeHtml(ttlText)}</strong></span>
             ${tokenInfo.expiresAt ? `<span>Expires: <strong>${escapeHtml(formatTokenDate(tokenInfo.expiresAt))}</strong></span>` : ''}
+          </div>
+          <div class="token-card__meta">
+            <span>Sessions:</span>
+            <div class="token-session-editor">
+              <select data-token-session-mode="${escapeHtml(tokenInfo.token || '')}">
+                <option value="all" ${sessionMode === 'all' ? 'selected' : ''}>All sessions</option>
+                <option value="specific" ${sessionMode === 'specific' ? 'selected' : ''}>Specific sessions</option>
+              </select>
+              <button class="ghost-button" type="button" data-token-session-edit="${escapeHtml(tokenInfo.token || '')}" ${sessionMode === 'specific' ? '' : 'disabled'}>Edit</button>
+            </div>
           </div>
           <div class="token-card__actions">
             <button class="ghost-button" type="button" data-copy-token="${escapeHtml(tokenInfo.token || '')}">Copy</button>
@@ -399,6 +424,32 @@ function renderTokens(tokens) {
       const token = button.getAttribute('data-revoke-token') || '';
       void revokeToken(token);
     });
+  });
+
+  tokenListEl.querySelectorAll('[data-token-session-mode]').forEach((select) => {
+    select.addEventListener('change', () => {
+      const token = select.getAttribute('data-token-session-mode') || '';
+      if (!token) return;
+      if (select.value === 'specific') {
+        openTokenSessionsModalForToken(token);
+      } else {
+        void updateTokenSessions(token, []);
+      }
+    });
+  });
+
+  tokenListEl.querySelectorAll('[data-token-session-edit]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const token = button.getAttribute('data-token-session-edit') || '';
+      if (!token) return;
+      openTokenSessionsModalForToken(token);
+    });
+  });
+
+  // Attach records for lookup
+  const cards = Array.from(tokenListEl.querySelectorAll('.token-card'));
+  cards.forEach((card, index) => {
+    card.__tokenRecord = tokens[index];
   });
 }
 
@@ -423,6 +474,21 @@ function closeSessionModal() {
   }
 }
 
+function openTokenSessionsModal() {
+  if (!tokenSessionsModalEl) return;
+  tokenSessionsModalEl.classList.remove('hidden');
+  tokenSessionsListEl?.focus();
+}
+
+function closeTokenSessionsModal() {
+  if (!tokenSessionsModalEl) return;
+  tokenSessionsModalEl.classList.add('hidden');
+  if (tokenSessionsModalFormEl) tokenSessionsModalFormEl.reset();
+  if (tokenSessionModeEl && selectedTokenSessions.length === 0) {
+    tokenSessionModeEl.value = 'all';
+  }
+}
+
 async function loadSessions() {
   setTokenStatus('Loading sessions…', '');
   const resp = await apiFetch('/api/claudecode/sessions');
@@ -431,6 +497,7 @@ async function loadSessions() {
     setTokenStatus(payload.detail || 'Failed to load sessions.', 'is-error');
     return [];
   }
+  allSessions = payload.sessions || [];
   renderSessionSelect(payload.sessions || []);
   renderTokenSessionOptions(payload.sessions || []);
   setTokenStatus(`Loaded ${String((payload.sessions || []).length)} session(s).`, 'is-success');
@@ -454,16 +521,52 @@ function renderSessionSelect(sessions) {
 }
 
 function renderTokenSessionOptions(sessions) {
-  if (!tokenSessionSelectEl) return;
-  const existing = Array.from(tokenSessionSelectEl.options).filter((o) => o.value === '*');
-  tokenSessionSelectEl.innerHTML = '';
-  if (existing.length) tokenSessionSelectEl.appendChild(existing[0]);
-  else tokenSessionSelectEl.appendChild(new Option('All sessions (owner)', '*'));
+  renderTokenSessionsChecklist(sessions, tokenSessionsModalSelected.length ? tokenSessionsModalSelected : selectedTokenSessions);
+}
+
+function renderTokenSessionsChecklist(sessions, selected) {
+  if (!tokenSessionsListEl) return;
   const sorted = (sessions || []).slice().sort();
+  tokenSessionsListEl.innerHTML = '';
   for (const s of sorted) {
     if (!s || s === '*') continue;
-    tokenSessionSelectEl.appendChild(new Option(s, s));
+    const label = document.createElement('label');
+    label.className = 'session-checkbox';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = s;
+    if (selected.includes(s)) checkbox.checked = true;
+    const text = document.createElement('span');
+    text.textContent = s;
+    label.appendChild(checkbox);
+    label.appendChild(text);
+    tokenSessionsListEl.appendChild(label);
   }
+}
+
+function openTokenSessionsModalForToken(token) {
+  const record = getTokenRecord(token);
+  const sessionValue = record?.session || '*';
+  const selected = sessionValue === '*' ? [] : sessionValue.split(',').map((s) => s.trim()).filter(Boolean);
+  tokenSessionsModalContext = { type: 'edit', token };
+  tokenSessionsModalSelected = selected;
+  renderTokenSessionsChecklist(allSessions, selected);
+  openTokenSessionsModal();
+}
+
+function openTokenSessionsModalForCreate() {
+  tokenSessionsModalContext = { type: 'create', token: null };
+  tokenSessionsModalSelected = selectedTokenSessions.slice();
+  renderTokenSessionsChecklist(allSessions, tokenSessionsModalSelected);
+  openTokenSessionsModal();
+}
+
+function getTokenRecord(token) {
+  if (!tokenListEl) return null;
+  const escapeToken = window.CSS?.escape ? CSS.escape(token) : token.replace(/"/g, '\\"');
+  const raw = tokenListEl.querySelector(`[data-token-session-mode="${escapeToken}"]`);
+  if (!raw) return null;
+  return raw.closest('.token-card')?.__tokenRecord || null;
 }
 
 async function createSessionFromModal(event) {
@@ -490,6 +593,42 @@ async function createSessionFromModal(event) {
   await loadSessions();
   if (sessionSelectEl) sessionSelectEl.value = name;
   lastSessionSelection = name;
+  if (path) {
+    sessionRootByName[name] = path;
+  }
+}
+
+function saveTokenSessionsFromModal(event) {
+  if (event) event.preventDefault();
+  if (!tokenSessionsListEl) return;
+  const selected = Array.from(tokenSessionsListEl.querySelectorAll('input[type="checkbox"]'))
+    .filter((input) => input.checked)
+    .map((input) => input.value);
+
+  if (tokenSessionsModalContext.type === 'edit' && tokenSessionsModalContext.token) {
+    void updateTokenSessions(tokenSessionsModalContext.token, selected);
+  } else {
+    selectedTokenSessions = selected;
+  }
+  closeTokenSessionsModal();
+}
+
+async function updateTokenSessions(token, sessions) {
+  if (!token) return;
+  const sessionValue = sessions.length === 0 ? '*' : sessions.join(',');
+  setTokenStatus('Updating token sessions…', '');
+  const resp = await apiFetch(`/api/tokens/${encodeURIComponent(token)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session: sessionValue }),
+  });
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    setTokenStatus(payload.detail || 'Failed to update token sessions.', 'is-error');
+    return;
+  }
+  setTokenStatus('Token sessions updated.', 'is-success');
+  await loadTokens();
 }
 
 async function loadTokens() {
@@ -556,15 +695,16 @@ async function createGuestToken(event) {
     // collect selected sessions from UI
     let sessionValue = undefined;
     try {
-      if (tokenSessionSelectEl) {
-        const opts = Array.from(tokenSessionSelectEl.selectedOptions || []).map((o) => o.value);
-        if (opts.length === 0) {
-          sessionValue = '*';
-        } else if (opts.includes('*')) {
-          sessionValue = '*';
-        } else {
-          sessionValue = opts.join(',');
+      const mode = tokenSessionModeEl?.value || 'all';
+      if (mode === 'all') {
+        sessionValue = '*';
+      } else {
+        if (selectedTokenSessions.length === 0) {
+          setTokenStatus('Select at least one session for a specific-sessions token.', 'is-error');
+          openTokenSessionsModal();
+          return;
         }
+        sessionValue = selectedTokenSessions.join(',');
       }
     } catch (e) {
       sessionValue = undefined;
@@ -594,6 +734,8 @@ async function createGuestToken(event) {
     if (createTokenFormEl) createTokenFormEl.reset();
     if (tokenTtlUnitEl) tokenTtlUnitEl.value = 'minutes';
     if (tokenAccessTypeEl) tokenAccessTypeEl.value = 'viewer';
+    if (tokenSessionModeEl) tokenSessionModeEl.value = 'all';
+    selectedTokenSessions = [];
   } finally {
     if (createTokenBtnEl) {
       createTokenBtnEl.disabled = false;
@@ -646,6 +788,10 @@ function initTokenManagement() {
       if (sessionSelectEl.value === '__create__') {
         openSessionModal();
       } else {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          disconnect();
+          setConnectionStatus('offline', 'Disconnected (session changed)');
+        }
         lastSessionSelection = sessionSelectEl.value;
       }
     });
@@ -674,6 +820,39 @@ function initTokenManagement() {
     });
   }
 
+  if (tokenSessionModeEl) {
+    tokenSessionModeEl.addEventListener('change', () => {
+      if (tokenSessionModeEl.value === 'specific') {
+        openTokenSessionsModal();
+      } else {
+        selectedTokenSessions = [];
+      }
+    });
+    tokenSessionModeEl.addEventListener('click', () => {
+      if (tokenSessionModeEl.value === 'specific') {
+        openTokenSessionsModal();
+      }
+    });
+  }
+
+  if (tokenSessionsModalFormEl) {
+    tokenSessionsModalFormEl.addEventListener('submit', (ev) => {
+      void saveTokenSessionsFromModal(ev);
+    });
+  }
+
+  if (tokenSessionsModalCloseEl) {
+    tokenSessionsModalCloseEl.addEventListener('click', () => {
+      closeTokenSessionsModal();
+    });
+  }
+
+  if (tokenSessionsModalEl) {
+    tokenSessionsModalEl.addEventListener('click', (ev) => {
+      if (ev.target === tokenSessionsModalEl) closeTokenSessionsModal();
+    });
+  }
+
   if (refreshTokensBtnEl) {
     refreshTokensBtnEl.addEventListener('click', () => {
       void loadTokens();
@@ -683,7 +862,10 @@ function initTokenManagement() {
 
 window.addEventListener('beforeunload', stopTokenAutoRefresh);
 window.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape') closeSessionModal();
+  if (ev.key === 'Escape') {
+    closeSessionModal();
+    closeTokenSessionsModal();
+  }
 });
 
 connectionToggleBtn.addEventListener('click', () => {

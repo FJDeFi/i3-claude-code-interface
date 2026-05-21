@@ -14,7 +14,7 @@ import os
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple, Union
 
 import asyncssh
 from asyncssh import PIPE, STDOUT
@@ -76,7 +76,11 @@ def load_ssh_bridge_config() -> SshBridgeConfig:
     )
 
 
-def build_remote_command_argv(api_key: Optional[str] = None, tmux_session: Optional[str] = None) -> Tuple[str, ...]:
+def build_remote_command_argv(
+    api_key: Optional[str] = None,
+    tmux_session: Optional[str] = None,
+    root_dir: Optional[str] = None,
+) -> Tuple[str, ...]:
     """Return argv for the remote process (executed under a PTY).
 
     * If ``SSH_REMOTE_COMMAND`` is set, run ``bash -lc`` with optional
@@ -91,6 +95,8 @@ def build_remote_command_argv(api_key: Optional[str] = None, tmux_session: Optio
     claude_cmd = os.getenv("CLAUDE_CODE_CMD", "claude").strip() or "claude"
 
     parts: List[str] = []
+    if root_dir:
+        parts.append(f"cd {shlex.quote(root_dir)}")
     if effective_api_key:
         parts.append(f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}")
     if remote_cmd:
@@ -101,9 +107,11 @@ def build_remote_command_argv(api_key: Optional[str] = None, tmux_session: Optio
         parts.append(f"exec {shlex.quote(claude_cmd)}")
         inner = "; ".join(parts)
         return ("bash", "-lc", inner)
-    # If a tmux session is requested, attach to it. This assumes tmux is
-    # available on the remote host and the session exists (owner may create it).
+    # If a tmux session is requested, create or attach to it. If a root_dir is
+    # provided, it becomes the initial directory for a new session.
     if tmux_session:
+        if root_dir:
+            return ("tmux", "new-session", "-A", "-s", tmux_session, "-c", root_dir)
         return ("tmux", "attach", "-t", tmux_session)
     return ("/bin/bash", "-il")
 
@@ -171,11 +179,11 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
 
     try:
         start = await _receive_start_api_key(websocket)
-        # start can be a tuple (api_key, tmux_session) or just api_key
+        # start can be a tuple (api_key, tmux_session, root_dir) or just api_key
         if isinstance(start, tuple):
-            api_key, tmux_session = start
+            api_key, tmux_session, root_dir = start
         else:
-            api_key, tmux_session = start, None
+            api_key, tmux_session, root_dir = start, None, None
     except WebSocketDisconnect:
         return
     cols, rows = _default_term_size()
@@ -194,7 +202,7 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
         await websocket.close(code=4401)
         return
 
-    argv = build_remote_command_argv(api_key, tmux_session=tmux_session)
+    argv = build_remote_command_argv(api_key, tmux_session=tmux_session, root_dir=root_dir)
     remote_exec = argv_to_remote_exec_string(argv)
     try:
         async with conn.create_process(
@@ -220,7 +228,10 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
         await conn.wait_closed()
 
 
-async def _receive_start_api_key(websocket: WebSocket) -> Optional[str]:
+StartPayload = Union[str, Tuple[Optional[str], Optional[str], Optional[str]]]
+
+
+async def _receive_start_api_key(websocket: WebSocket) -> Optional[StartPayload]:
     """Read the initial WebSocket start message containing the session API key."""
 
     loop = asyncio.get_running_loop()
@@ -251,11 +262,14 @@ async def _receive_start_api_key(websocket: WebSocket) -> Optional[str]:
         api_key = payload.get("anthropic_api_key")
         # Optional tmux session name for attaching to a shared session
         tmux_session = payload.get("session")
+        root_dir = payload.get("rootDir")
         if not isinstance(api_key, str):
             return None
         api_key_val = api_key.strip() or None
-        if tmux_session is not None and isinstance(tmux_session, str) and tmux_session.strip():
-            return (api_key_val, tmux_session.strip())
+        tmux_val = tmux_session.strip() if isinstance(tmux_session, str) else None
+        root_val = root_dir.strip() if isinstance(root_dir, str) and root_dir.strip() else None
+        if tmux_val:
+            return (api_key_val, tmux_val, root_val)
         return api_key_val
 
 

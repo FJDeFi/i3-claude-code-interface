@@ -59,7 +59,7 @@
         <div class="token-status" id="token-status"></div>
 
         <form class="token-form" id="create-token-form">
-          <label class="token-field token-field--sessions">
+          <label class="token-field">
             <span>TTL</span>
             <div class="token-field__row">
               <input id="token-ttl-value" type="number" min="1" step="1" placeholder="30" />
@@ -79,13 +79,13 @@
             </select>
           </label>
 
-          <label class="token-field">
+          <label class="token-field token-field--sessions">
             <span>Sessions</span>
             <div class="token-field__row token-field__row--sessions">
-              <select id="token-session-select" multiple size="4">
-                <option value="*">All sessions (owner)</option>
+              <select id="token-session-mode">
+                <option value="all" selected>All sessions</option>
+                <option value="specific">Specific sessions</option>
               </select>
-              <p class="hint">Select sessions this token may attach to. Hold Ctrl/Cmd to select multiple.</p>
             </div>
           </label>
 
@@ -120,6 +120,23 @@
           </label>
           <div class="modal__actions">
             <button class="primary-button" type="submit">Create session</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="modal hidden" id="token-sessions-modal" role="dialog" aria-modal="true">
+      <div class="modal__content">
+        <header class="modal__header">
+          <h3>Select sessions</h3>
+          <button class="ghost-button" id="token-sessions-modal-close" type="button">Close</button>
+        </header>
+        <form id="token-sessions-modal-form" class="modal__form">
+          <label>
+            <span>Select sessions this token may attach to</span>
+            <div id="token-sessions-list" class="session-checkbox-list"></div>
+          </label>
+          <div class="modal__actions">
+            <button class="primary-button" type="submit">Save selection</button>
           </div>
         </form>
       </div>
