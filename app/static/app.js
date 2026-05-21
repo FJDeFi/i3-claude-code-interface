@@ -27,6 +27,7 @@ let observedTerminalSize = '';
 let tokenRefreshTimer = null;
 /** @type {WebSocket | null} */
 let socket = null;
+let lastSessionSelection = '';
 
 const session = window.__CLAUDE_CODE_SESSION__ || {};
 const sessionToken = getCurrentToken();
@@ -417,6 +418,9 @@ function closeSessionModal() {
   if (!sessionModalEl) return;
   sessionModalEl.classList.add('hidden');
   if (sessionModalFormEl) sessionModalFormEl.reset();
+  if (sessionSelectEl && lastSessionSelection) {
+    sessionSelectEl.value = lastSessionSelection;
+  }
 }
 
 async function loadSessions() {
@@ -445,6 +449,7 @@ function renderSessionSelect(sessions) {
   }
   if (current && current !== '__create__') {
     sessionSelectEl.value = current;
+    lastSessionSelection = current;
   }
 }
 
@@ -484,6 +489,7 @@ async function createSessionFromModal(event) {
   closeSessionModal();
   await loadSessions();
   if (sessionSelectEl) sessionSelectEl.value = name;
+  lastSessionSelection = name;
 }
 
 async function loadTokens() {
@@ -639,6 +645,13 @@ function initTokenManagement() {
     sessionSelectEl.addEventListener('change', () => {
       if (sessionSelectEl.value === '__create__') {
         openSessionModal();
+      } else {
+        lastSessionSelection = sessionSelectEl.value;
+      }
+    });
+    sessionSelectEl.addEventListener('click', () => {
+      if (sessionSelectEl.value === '__create__') {
+        openSessionModal();
       }
     });
   }
@@ -682,6 +695,7 @@ connectionToggleBtn.addEventListener('click', () => {
 });
 
 setConnectionButton('connect');
+void loadSessions();
 initTokenManagement();
 
 window.addEventListener('resize', scheduleFit);
@@ -701,9 +715,7 @@ if (terminalWrapEl && typeof ResizeObserver !== 'undefined') {
   ro.observe(terminalWrapEl);
 }
 
-if (embedded) {
-  connect();
-}
+// Do not auto-connect; user must pick a session first.
 
 function escapeHtml(text) {
   const div = document.createElement('div');
