@@ -479,11 +479,13 @@ code {
 /* Embedded / iframe: fill parent height, terminal flexes */
 html.embed {
   height: 100%;
+  overflow-y: auto;
 }
 
 body.embed {
   height: 100%;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto; /* Allow terminal to scroll if content exceeds iframe height */
   display: flex;
   flex-direction: column;
 }
