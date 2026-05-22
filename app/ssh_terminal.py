@@ -21,7 +21,9 @@ from asyncssh import PIPE, STDOUT
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-logger = logging.getLogger(__name__)
+from .logging_setup import setup_logger
+
+logger = setup_logger("claude_code.ssh")
 START_MESSAGE_TIMEOUT_SECONDS = 3.0
 OPENCLAW_ENV_FILE = Path("/etc/openclaw.env")
 
@@ -185,6 +187,7 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
     try:
         cfg = load_ssh_bridge_config()
     except ValueError as exc:
+        logger.info("ssh config error", extra={"error": str(exc)})
         await websocket.send_text(
             json.dumps({"type": "error", "message": str(exc)})
         )
@@ -200,6 +203,14 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
             api_key, tmux_session, root_dir = start, None, None
     except WebSocketDisconnect:
         return
+    logger.info(
+        "ssh start",
+        extra={
+            "tmux_session": tmux_session or "",
+            "root_dir": root_dir or "",
+            "api_key": "present" if api_key else "missing",
+        },
+    )
     cols, rows = _default_term_size()
     try:
         conn = await asyncssh.connect(
@@ -218,6 +229,10 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
 
     argv = build_remote_command_argv(api_key, tmux_session=tmux_session, root_dir=root_dir)
     remote_exec = argv_to_remote_exec_string(argv)
+    logger.info(
+        "ssh remote command",
+        extra={"tmux_session": tmux_session or "", "root_dir": root_dir or "", "argv": " ".join(argv)},
+    )
     try:
         async with conn.create_process(
             command=remote_exec,

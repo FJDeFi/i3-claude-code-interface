@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .ssh_terminal import run_terminal_bridge
+from .logging_setup import setup_logger
 from .token import create_token, get_token_record, list_tokens as redis_list_tokens, revoke_token, validate_token, update_token_session
 import re
 import shlex
@@ -19,6 +20,7 @@ import subprocess
 
 app = FastAPI(title="Claude Code SSH terminal bridge")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+logger = setup_logger("claude_code.api")
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -52,6 +54,14 @@ def _extract_token_from_request(request: Request) -> str:
     return ""
 
 
+def _mask_token(token: str) -> str:
+    if not token:
+        return ""
+    if len(token) <= 8:
+        return token
+    return f"{token[:4]}…{token[-4:]}"
+
+
 async def _resolve_session(request: Request) -> Optional[dict]:
     token = _extract_token_from_request(request)
     if not token:
@@ -75,7 +85,9 @@ async def _require_privileged_session(request: Request) -> Optional[dict]:
 async def index(request: Request) -> HTMLResponse:
     session = await _resolve_session(request)
     if not session:
+        logger.info("GET / rejected", extra={"token": _mask_token(_extract_token_from_request(request))})
         return _render_html("rejected.html")
+    logger.info("GET / ok", extra={"token": _mask_token(session.get("token", "")), "role": session.get("role")})
     return _render_html("index.html", session=session)
 
 
@@ -104,6 +116,7 @@ async def terminal_socket(websocket: WebSocket) -> None:
     ).strip()
     session = await validate_token(token) if token else None
     if not session:
+        logger.info("WS /ws/terminal denied", extra={"token": _mask_token(token)})
         await websocket.accept()
         await websocket.send_text(
             json.dumps({"type": "error", "message": "Access denied: invalid or expired token"})
@@ -113,6 +126,10 @@ async def terminal_socket(websocket: WebSocket) -> None:
 
     # Block guest tokens that only have viewer access from opening a terminal
     if session.get("role") == "guest" and session.get("accessType", "viewer") == "viewer":
+        logger.info(
+            "WS /ws/terminal viewer denied",
+            extra={"token": _mask_token(token), "role": session.get("role"), "access": session.get("accessType")},
+        )
         await websocket.accept()
         await websocket.send_text(
             json.dumps({"type": "error", "message": "Access denied: viewer tokens cannot use the terminal"})
@@ -120,6 +137,10 @@ async def terminal_socket(websocket: WebSocket) -> None:
         await websocket.close(code=4403)
         return
 
+    logger.info(
+        "WS /ws/terminal accepted",
+        extra={"token": _mask_token(token), "role": session.get("role"), "access": session.get("accessType")},
+    )
     websocket.state.token_meta = session
     await run_terminal_bridge(websocket)
 
@@ -128,7 +149,9 @@ async def terminal_socket(websocket: WebSocket) -> None:
 async def get_tokens(request: Request) -> JSONResponse:
     session = await _require_privileged_session(request)
     if not session:
+        logger.info("GET /api/tokens denied", extra={"token": _mask_token(_extract_token_from_request(request))})
         return JSONResponse(status_code=403, content={"detail": "Owner/admin token required"})
+    logger.info("GET /api/tokens ok", extra={"token": _mask_token(session.get("token", ""))})
     tokens = await redis_list_tokens()
     return JSONResponse({"tokens": tokens})
 
@@ -137,6 +160,7 @@ async def get_tokens(request: Request) -> JSONResponse:
 async def create_guest_token(request: Request) -> JSONResponse:
     session = await _require_privileged_session(request)
     if not session:
+        logger.info("POST /api/tokens denied", extra={"token": _mask_token(_extract_token_from_request(request))})
         return JSONResponse(status_code=403, content={"detail": "Owner/admin token required"})
 
     body = await request.json()
@@ -154,6 +178,15 @@ async def create_guest_token(request: Request) -> JSONResponse:
         if ttl_seconds <= 0:
             return JSONResponse(status_code=400, content={"detail": "ttlSeconds must be greater than zero"})
 
+    logger.info(
+        "POST /api/tokens",
+        extra={
+            "token": _mask_token(session.get("token", "")),
+            "access": access_type,
+            "ttl": ttl_seconds,
+            "session": str(body.get("session") or "*"),
+        },
+    )
     created = await create_token(
         access_type=access_type,
         ttl_seconds=ttl_seconds,
@@ -168,13 +201,17 @@ async def create_guest_token(request: Request) -> JSONResponse:
 async def delete_token(token: str, request: Request) -> JSONResponse:
     session = await _require_privileged_session(request)
     if not session:
+        logger.info("DELETE /api/tokens denied", extra={"token": _mask_token(_extract_token_from_request(request))})
         return JSONResponse(status_code=403, content={"detail": "Owner/admin token required"})
     record = await get_token_record(token)
     if record and record.get("role") == "owner":
+        logger.info("DELETE /api/tokens blocked owner", extra={"token": _mask_token(token)})
         return JSONResponse(status_code=403, content={"detail": "Owner tokens cannot be revoked"})
     revoked = await revoke_token(token)
     if not revoked:
+        logger.info("DELETE /api/tokens not found", extra={"token": _mask_token(token)})
         return JSONResponse(status_code=404, content={"detail": "Token not found"})
+    logger.info("DELETE /api/tokens ok", extra={"token": _mask_token(token)})
     return JSONResponse({"status": "revoked", "token": token})
 
 
@@ -182,6 +219,7 @@ async def delete_token(token: str, request: Request) -> JSONResponse:
 async def update_token(token: str, request: Request) -> JSONResponse:
     session = await _require_privileged_session(request)
     if not session:
+        logger.info("PATCH /api/tokens denied", extra={"token": _mask_token(_extract_token_from_request(request))})
         return JSONResponse(status_code=403, content={"detail": "Owner/admin token required"})
     body = await request.json()
     session_value = body.get("session")
@@ -189,8 +227,13 @@ async def update_token(token: str, request: Request) -> JSONResponse:
         session_value = ",".join([str(s).strip() for s in session_value if str(s).strip()])
     if isinstance(session_value, str):
         session_value = session_value.strip() or "*"
+    logger.info(
+        "PATCH /api/tokens",
+        extra={"token": _mask_token(token), "session": session_value},
+    )
     updated = await update_token_session(token, session_value)
     if not updated:
+        logger.info("PATCH /api/tokens not found", extra={"token": _mask_token(token)})
         return JSONResponse(status_code=404, content={"detail": "Token not found or not editable"})
     return JSONResponse(updated)
 
