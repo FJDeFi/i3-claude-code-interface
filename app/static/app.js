@@ -521,7 +521,9 @@ function renderSessionSelect(sessions) {
   const current = sessionSelectEl.value;
   sessionSelectEl.innerHTML = '';
   sessionSelectEl.appendChild(new Option('Select a session…', '', true, false));
-  sessionSelectEl.appendChild(new Option('Create a new session', '__create__'));
+  if (isPrivilegedRole(session.role)) {
+    sessionSelectEl.appendChild(new Option('Create a new session', '__create__'));
+  }
   const sorted = (sessions || []).slice().sort();
   for (const s of sorted) {
     if (!s) continue;
@@ -801,7 +803,11 @@ function initTokenManagement() {
   if (sessionSelectEl) {
     sessionSelectEl.addEventListener('change', () => {
       if (sessionSelectEl.value === '__create__') {
-        openSessionModal();
+        if (isPrivilegedRole(session.role)) {
+          openSessionModal();
+        } else {
+          sessionSelectEl.value = '';
+        }
       } else {
         if (socket && socket.readyState === WebSocket.OPEN) {
           disconnect();

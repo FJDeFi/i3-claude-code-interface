@@ -95,23 +95,25 @@ def build_remote_command_argv(
     claude_cmd = os.getenv("CLAUDE_CODE_CMD", "claude").strip() or "claude"
 
     if tmux_session:
-        # Create (or attach) the tmux session first, then run the command inside it.
-        tmux_parts: List[str] = ["tmux", "new-session", "-A", "-s", tmux_session]
-        if root_dir:
-            tmux_parts.extend(["-c", root_dir])
+        session_q = shlex.quote(tmux_session)
+        root_q = shlex.quote(root_dir) if root_dir else ""
 
         if remote_cmd:
             if effective_api_key:
                 inner = f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}; {remote_cmd}"
-                return tuple(tmux_parts + ["bash", "-lc", inner])
-            return tuple(tmux_parts + ["bash", "-lc", remote_cmd])
-
-        if effective_api_key:
-            root_arg = f" --root {shlex.quote(root_dir)}" if root_dir else ""
+                new_cmd = f"tmux new-session -s {session_q} {f'-c {root_q} ' if root_dir else ''}bash -lc {shlex.quote(inner)}"
+            else:
+                new_cmd = f"tmux new-session -s {session_q} {f'-c {root_q} ' if root_dir else ''}bash -lc {shlex.quote(remote_cmd)}"
+        elif effective_api_key:
+            root_arg = f" --root {root_q}" if root_dir else ""
             inner = f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}; exec {shlex.quote(claude_cmd)}{root_arg}"
-            return tuple(tmux_parts + ["bash", "-lc", inner])
+            new_cmd = f"tmux new-session -s {session_q} {f'-c {root_q} ' if root_dir else ''}bash -lc {shlex.quote(inner)}"
+        else:
+            new_cmd = f"tmux new-session -s {session_q} {f'-c {root_q} ' if root_dir else ''}/bin/bash -il"
 
-        return tuple(tmux_parts + ["/bin/bash", "-il"])
+        # Attach if it exists, otherwise create a session and run the command inside it.
+        attach_or_create = f"tmux has-session -t {session_q} 2>/dev/null && tmux attach -t {session_q} || {new_cmd}"
+        return ("bash", "-lc", attach_or_create)
 
     parts: List[str] = []
     if effective_api_key:
