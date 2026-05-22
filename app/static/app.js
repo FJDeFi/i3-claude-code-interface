@@ -380,7 +380,18 @@ function renderTokens(tokens) {
       const sessionMode = sessionValue === '*' ? 'all' : 'specific';
       const sessionSummary = sessionMode === 'all'
         ? 'All sessions'
-        : sessionValue.split(',').map((s) => s.trim()).filter(Boolean).join(', ') || 'None';
+        : 'Specific sessions';
+      const sessionEditor = isOwnerToken
+        ? ''
+        : `
+            <div class="token-session-editor">
+              <select data-token-session-mode="${escapeHtml(tokenInfo.token || '')}">
+                <option value="all" ${sessionMode === 'all' ? 'selected' : ''}>All sessions</option>
+                <option value="specific" ${sessionMode === 'specific' ? 'selected' : ''}>Specific sessions</option>
+              </select>
+              <button class="ghost-button" type="button" data-token-session-edit="${escapeHtml(tokenInfo.token || '')}" ${sessionMode === 'specific' ? '' : 'disabled'}>Edit</button>
+            </div>
+        `;
       return `
         <article class="token-card">
           <div class="token-card__header">
@@ -399,13 +410,7 @@ function renderTokens(tokens) {
           </div>
           <div class="token-card__meta">
             <span>Sessions: <strong>${escapeHtml(sessionSummary)}</strong></span>
-            <div class="token-session-editor">
-              <select data-token-session-mode="${escapeHtml(tokenInfo.token || '')}">
-                <option value="all" ${sessionMode === 'all' ? 'selected' : ''}>All sessions</option>
-                <option value="specific" ${sessionMode === 'specific' ? 'selected' : ''}>Specific sessions</option>
-              </select>
-              <button class="ghost-button" type="button" data-token-session-edit="${escapeHtml(tokenInfo.token || '')}" ${sessionMode === 'specific' ? '' : 'disabled'}>Edit</button>
-            </div>
+            ${sessionEditor}
           </div>
           <div class="token-card__actions">
             <button class="ghost-button" type="button" data-copy-token="${escapeHtml(tokenInfo.token || '')}">Copy</button>

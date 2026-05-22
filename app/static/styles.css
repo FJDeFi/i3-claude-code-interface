@@ -319,7 +319,7 @@ code {
 }
 
 .token-field--sessions {
-  grid-column: 1 / -1;
+  grid-column: 1 / span 2;
 }
 
 .token-field__row {
@@ -349,6 +349,11 @@ code {
 .token-form__actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.token-form__actions--inline {
+  grid-column: 3 / span 1;
+  align-self: end;
 }
 
 .modal {
@@ -419,6 +424,7 @@ code {
 .session-checkbox {
   display: flex;
   align-items: center;
+  flex-direction: row;
   gap: 8px;
   color: var(--text);
   font-size: 0.92rem;
@@ -635,6 +641,7 @@ body.embed .shell {
   flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 12px;
   min-height: 0;
   width: 100%;
   max-width: none;
@@ -732,6 +739,11 @@ body.embed .terminal-wrap {
 
   .token-form {
     grid-template-columns: 1fr;
+  }
+
+  .token-field--sessions,
+  .token-form__actions--inline {
+    grid-column: 1 / -1;
   }
 
   .panel-header {
