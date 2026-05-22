@@ -292,9 +292,7 @@ async def _receive_start_api_key(websocket: WebSocket) -> Optional[StartPayload]
         # Optional tmux session name for attaching to a shared session
         tmux_session = payload.get("session")
         root_dir = payload.get("rootDir")
-        if not isinstance(api_key, str):
-            return None
-        api_key_val = api_key.strip() or None
+        api_key_val = api_key.strip() or None if isinstance(api_key, str) else None
         tmux_val = tmux_session.strip() if isinstance(tmux_session, str) else None
         root_val = root_dir.strip() if isinstance(root_dir, str) and root_dir.strip() else None
         if tmux_val:
