@@ -104,7 +104,8 @@ def build_remote_command_argv(
         inner = "; ".join(parts)
         return ("bash", "-lc", inner)
     if effective_api_key:
-        parts.append(f"exec {shlex.quote(claude_cmd)}")
+        root_arg = f" --root {shlex.quote(root_dir)}" if root_dir else ""
+        parts.append(f"exec {shlex.quote(claude_cmd)}{root_arg}")
         inner = "; ".join(parts)
         return ("bash", "-lc", inner)
     # If a tmux session is requested, create or attach to it. If a root_dir is
