@@ -204,12 +204,10 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         return
     logger.info(
-        "ssh start",
-        extra={
-            "tmux_session": tmux_session or "",
-            "root_dir": root_dir or "",
-            "api_key": "present" if api_key else "missing",
-        },
+        "ssh start tmux_session=%s root_dir=%s api_key=%s",
+        tmux_session or "",
+        root_dir or "",
+        "present" if api_key else "missing",
     )
     cols, rows = _default_term_size()
     try:
@@ -230,8 +228,10 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
     argv = build_remote_command_argv(api_key, tmux_session=tmux_session, root_dir=root_dir)
     remote_exec = argv_to_remote_exec_string(argv)
     logger.info(
-        "ssh remote command",
-        extra={"tmux_session": tmux_session or "", "root_dir": root_dir or "", "argv": " ".join(argv)},
+        "ssh remote command tmux_session=%s root_dir=%s argv=%s",
+        tmux_session or "",
+        root_dir or "",
+        " ".join(argv),
     )
     try:
         async with conn.create_process(
