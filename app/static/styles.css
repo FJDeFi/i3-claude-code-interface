@@ -431,6 +431,17 @@ code {
   font-weight: 600;
 }
 
+.modal__form .session-checkbox {
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  gap: 8px;
+}
+
+.modal__form .session-checkbox span {
+  display: inline-block;
+}
+
 .session-checkbox input {
   width: 16px;
   height: 16px;
@@ -639,8 +650,7 @@ body.embed {
 
 body.embed .shell {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  display: block;
   gap: 12px;
   min-height: 0;
   width: 100%;
@@ -673,7 +683,7 @@ body.embed .hero-status {
 }
 
 body.embed .panel {
-  flex: 1;
+  flex: 0 0 auto;
   height: auto;
   min-height: 0;
   display: flex;
