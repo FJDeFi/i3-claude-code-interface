@@ -180,6 +180,13 @@ function connect() {
   ensureTerm();
   term.reset();
 
+  const selected = getSelectedSession();
+  if (!selected) {
+    setConnectionStatus('offline', 'Select a session before connecting');
+    setConnectionButton('connect');
+    return;
+  }
+
   setConnectionStatus(null, 'Connecting…');
   setConnectionButton('disconnect');
 
@@ -191,12 +198,9 @@ function connect() {
   ws.onopen = () => {
     wsOpened = true;
     let startPayload = { type: 'start' };
-    const selected = getSelectedSession();
-    if (selected) {
-      startPayload.session = selected;
-      const rootDir = sessionRootByName[selected];
-      if (rootDir) startPayload.rootDir = rootDir;
-    }
+    startPayload.session = selected;
+    const rootDir = sessionRootByName[selected];
+    if (rootDir) startPayload.rootDir = rootDir;
     ws.send(JSON.stringify(startPayload));
     setConnectionStatus('online', 'Starting Claude Code');
     scheduleFit();
@@ -516,6 +520,7 @@ function renderSessionSelect(sessions) {
   if (!sessionSelectEl) return;
   const current = sessionSelectEl.value;
   sessionSelectEl.innerHTML = '';
+  sessionSelectEl.appendChild(new Option('Select a session…', '', true, false));
   sessionSelectEl.appendChild(new Option('Create a new session', '__create__'));
   const sorted = (sessions || []).slice().sort();
   for (const s of sorted) {
@@ -525,6 +530,8 @@ function renderSessionSelect(sessions) {
   if (current && current !== '__create__') {
     sessionSelectEl.value = current;
     lastSessionSelection = current;
+  } else if (lastSessionSelection) {
+    sessionSelectEl.value = lastSessionSelection;
   }
 }
 
@@ -801,11 +808,6 @@ function initTokenManagement() {
           setConnectionStatus('offline', 'Disconnected (session changed)');
         }
         lastSessionSelection = sessionSelectEl.value;
-      }
-    });
-    sessionSelectEl.addEventListener('click', () => {
-      if (sessionSelectEl.value === '__create__') {
-        openSessionModal();
       }
     });
   }

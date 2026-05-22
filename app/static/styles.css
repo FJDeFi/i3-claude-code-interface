@@ -210,6 +210,10 @@ code {
   border-radius: 30px;
 }
 
+.terminal-panel {
+  height: min(66vh, 700px);
+}
+
 .token-panel {
   height: auto;
   min-height: 0;
@@ -688,6 +692,14 @@ body.embed .panel {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+body.embed .terminal-panel {
+  height: min(60vh, 520px);
+}
+
+body.embed .terminal-panel .terminal-wrap {
+  min-height: 0;
 }
 
 body.embed .token-panel {
