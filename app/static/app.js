@@ -29,6 +29,7 @@ let fitAddon = null;
 let fitFrame = 0;
 let observedTerminalSize = '';
 let tokenRefreshTimer = null;
+let sessionRefreshTimer = null;
 /** @type {WebSocket | null} */
 let socket = null;
 let lastSessionSelection = '';
@@ -674,10 +675,24 @@ function stopTokenAutoRefresh() {
   }
 }
 
+function stopSessionAutoRefresh() {
+  if (sessionRefreshTimer) {
+    clearInterval(sessionRefreshTimer);
+    sessionRefreshTimer = null;
+  }
+}
+
 function startTokenAutoRefresh() {
   stopTokenAutoRefresh();
   tokenRefreshTimer = window.setInterval(() => {
     void loadTokens();
+  }, 3000);
+}
+
+function startSessionAutoRefresh() {
+  stopSessionAutoRefresh();
+  sessionRefreshTimer = window.setInterval(() => {
+    void loadSessions();
   }, 3000);
 }
 
@@ -791,30 +806,11 @@ function initTokenManagement() {
   tokenManagementPanelEl.classList.remove('hidden');
   setTokenStatus(`Signed in as ${session.role || 'owner'}.`, 'is-success');
   void loadTokens();
-  void loadSessions();
   startTokenAutoRefresh();
 
   if (createTokenFormEl) {
     createTokenFormEl.addEventListener('submit', (event) => {
       void createGuestToken(event);
-    });
-  }
-
-  if (sessionSelectEl) {
-    sessionSelectEl.addEventListener('change', () => {
-      if (sessionSelectEl.value === '__create__') {
-        if (isPrivilegedRole(session.role)) {
-          openSessionModal();
-        } else {
-          sessionSelectEl.value = '';
-        }
-      } else {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          disconnect();
-          setConnectionStatus('offline', 'Disconnected (session changed)');
-        }
-        lastSessionSelection = sessionSelectEl.value;
-      }
     });
   }
 
@@ -876,7 +872,29 @@ function initTokenManagement() {
   }
 }
 
-window.addEventListener('beforeunload', stopTokenAutoRefresh);
+function initSessionPicker() {
+  if (!sessionSelectEl) return;
+  sessionSelectEl.addEventListener('change', () => {
+    if (sessionSelectEl.value === '__create__') {
+      if (isPrivilegedRole(session.role)) {
+        openSessionModal();
+      } else {
+        sessionSelectEl.value = '';
+      }
+      return;
+    }
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      disconnect();
+      setConnectionStatus('offline', 'Disconnected (session changed)');
+    }
+    lastSessionSelection = sessionSelectEl.value;
+  });
+}
+
+window.addEventListener('beforeunload', () => {
+  stopTokenAutoRefresh();
+  stopSessionAutoRefresh();
+});
 window.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') {
     closeSessionModal();
@@ -894,6 +912,8 @@ connectionToggleBtn.addEventListener('click', () => {
 
 setConnectionButton('connect');
 void loadSessions();
+startSessionAutoRefresh();
+initSessionPicker();
 initTokenManagement();
 
 window.addEventListener('resize', scheduleFit);
