@@ -94,9 +94,26 @@ def build_remote_command_argv(
     effective_api_key = _resolve_anthropic_api_key(api_key)
     claude_cmd = os.getenv("CLAUDE_CODE_CMD", "claude").strip() or "claude"
 
+    if tmux_session:
+        # Create (or attach) the tmux session first, then run the command inside it.
+        tmux_parts: List[str] = ["tmux", "new-session", "-A", "-s", tmux_session]
+        if root_dir:
+            tmux_parts.extend(["-c", root_dir])
+
+        if remote_cmd:
+            if effective_api_key:
+                inner = f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}; {remote_cmd}"
+                return tuple(tmux_parts + ["bash", "-lc", inner])
+            return tuple(tmux_parts + ["bash", "-lc", remote_cmd])
+
+        if effective_api_key:
+            root_arg = f" --root {shlex.quote(root_dir)}" if root_dir else ""
+            inner = f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}; exec {shlex.quote(claude_cmd)}{root_arg}"
+            return tuple(tmux_parts + ["bash", "-lc", inner])
+
+        return tuple(tmux_parts + ["/bin/bash", "-il"])
+
     parts: List[str] = []
-    if root_dir:
-        parts.append(f"cd {shlex.quote(root_dir)}")
     if effective_api_key:
         parts.append(f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}")
     if remote_cmd:
@@ -108,12 +125,6 @@ def build_remote_command_argv(
         parts.append(f"exec {shlex.quote(claude_cmd)}{root_arg}")
         inner = "; ".join(parts)
         return ("bash", "-lc", inner)
-    # If a tmux session is requested, create or attach to it. If a root_dir is
-    # provided, it becomes the initial directory for a new session.
-    if tmux_session:
-        if root_dir:
-            return ("tmux", "new-session", "-A", "-s", tmux_session, "-c", root_dir)
-        return ("tmux", "attach", "-t", tmux_session)
     return ("/bin/bash", "-il")
 
 
