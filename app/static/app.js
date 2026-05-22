@@ -513,6 +513,15 @@ async function loadSessions() {
   allSessions = payload.sessions || [];
   renderSessionSelect(payload.sessions || []);
   renderTokenSessionOptions(payload.sessions || []);
+  const selected = getSelectedSession();
+  if (selected && !allSessions.includes(selected)) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      disconnect();
+      setConnectionStatus('offline', 'Disconnected (session access removed)');
+    }
+    if (sessionSelectEl) sessionSelectEl.value = '';
+    lastSessionSelection = '';
+  }
   setTokenStatus(`Loaded ${String((payload.sessions || []).length)} session(s).`, 'is-success');
   return payload.sessions || [];
 }
