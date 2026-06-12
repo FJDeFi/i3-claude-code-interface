@@ -23,6 +23,9 @@ const sessionModalFormEl = document.querySelector('#session-modal-form');
 const sessionModalNameEl = document.querySelector('#session-modal-name');
 const sessionModalPathEl = document.querySelector('#session-modal-path');
 const sessionModalCloseEl = document.querySelector('#session-modal-close');
+const accountSummaryEl = document.querySelector('#account-summary');
+const accountNameEl = document.querySelector('#account-name');
+const signOutBtnEl = document.querySelector('#sign-out-btn');
 
 let term = null;
 let fitAddon = null;
@@ -64,6 +67,24 @@ function applyEmbedClass() {
 }
 
 const embedded = applyEmbedClass();
+
+function renderAccountSummary() {
+  if (!accountSummaryEl || session.authType !== 'firebase') return;
+  const label = session.displayName || session.email || 'Google account';
+  if (accountNameEl) accountNameEl.textContent = label;
+  accountSummaryEl.classList.remove('hidden');
+}
+
+async function signOutFirebaseSession() {
+  try {
+    await fetch(apiPath('/api/auth/logout'), {
+      method: 'POST',
+      credentials: 'include',
+    });
+  } finally {
+    window.location.reload();
+  }
+}
 
 function getCurrentToken() {
   if (session.token) return String(session.token);
@@ -113,6 +134,11 @@ function apiPath(path) {
   if (path.startsWith('/')) return `${basePath}${path}`;
   return `${basePath}/${path}`;
 }
+
+renderAccountSummary();
+signOutBtnEl?.addEventListener('click', () => {
+  void signOutFirebaseSession();
+});
 
 function ensureTerm() {
   if (term) return;

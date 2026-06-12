@@ -10,6 +10,7 @@ import redis.asyncio as aioredis
 REDIS_URL = os.environ.get("CLAUDE_CODE_REDIS_URL", "redis://127.0.0.1:6379")
 TOKEN_PREFIX = "claude:token:"
 TOKEN_INDEX_KEY = "claude:tokens:index"
+WEB_SESSION_PREFIX = "claude:web-session:"
 
 _redis: Optional[aioredis.Redis] = None
 
@@ -20,6 +21,10 @@ def _utc_now() -> str:
 
 def token_key(token: str) -> str:
     return f"{TOKEN_PREFIX}{token}"
+
+
+def web_session_key(session_id: str) -> str:
+    return f"{WEB_SESSION_PREFIX}{session_id}"
 
 
 async def get_redis() -> aioredis.Redis:
@@ -189,3 +194,54 @@ async def create_owner_token(token: str, deployment_id: Optional[str] = None) ->
         status="active",
         session="*",
     )
+
+
+async def create_web_session(
+    *,
+    uid: str,
+    email: Optional[str] = None,
+    display_name: Optional[str] = None,
+    ttl_seconds: int = 3600,
+) -> tuple[str, dict[str, Any]]:
+    session_id = secrets.token_urlsafe(32)
+    redis_client = await get_redis()
+    record = {
+        "role": "owner",
+        "status": "active",
+        "accessType": "editor",
+        "session": "*",
+        "authType": "firebase",
+        "uid": uid,
+        "email": email or "",
+        "displayName": display_name or "",
+        "createdAt": _utc_now(),
+    }
+    await redis_client.hset(web_session_key(session_id), mapping=record)
+    await redis_client.expire(web_session_key(session_id), max(60, int(ttl_seconds)))
+    return session_id, {"sessionId": session_id, **record}
+
+
+async def validate_web_session(session_id: str) -> Optional[dict[str, Any]]:
+    if not session_id:
+        return None
+    redis_client = await get_redis()
+    record = await redis_client.hgetall(web_session_key(session_id))
+    if not record or record.get("status") != "active":
+        return None
+    return {
+        "role": record.get("role") or "owner",
+        "status": record.get("status") or "active",
+        "accessType": record.get("accessType") or "editor",
+        "session": record.get("session") or "*",
+        "authType": record.get("authType") or "firebase",
+        "uid": record.get("uid") or None,
+        "email": record.get("email") or None,
+        "displayName": record.get("displayName") or None,
+    }
+
+
+async def revoke_web_session(session_id: str) -> bool:
+    if not session_id:
+        return False
+    redis_client = await get_redis()
+    return bool(await redis_client.delete(web_session_key(session_id)))

@@ -12,7 +12,20 @@ from fastapi.staticfiles import StaticFiles
 
 from .ssh_terminal import run_terminal_bridge
 from .logging_setup import setup_logger
-from .token import create_token, get_token_record, list_tokens as redis_list_tokens, revoke_token, validate_token, update_token_session
+from .firebase_auth import verify_owner_id_token
+from .token import (
+    create_token,
+    create_web_session,
+    get_token_record,
+    list_tokens as redis_list_tokens,
+    revoke_token,
+    revoke_web_session,
+    update_token_session,
+    validate_token,
+    validate_web_session,
+)
+import os
+import time
 import re
 import shlex
 import subprocess
@@ -21,6 +34,7 @@ import subprocess
 app = FastAPI(title="Claude Code SSH terminal bridge")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 logger = setup_logger("claude_code.api")
+SESSION_COOKIE = "claude_code_session"
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -32,7 +46,13 @@ def _read_static_html(name: str) -> str:
 def _render_html(name: str, *, session: Optional[dict] = None) -> HTMLResponse:
     html = _read_static_html(name)
     if session is not None:
-        injected = f"<script>window.__CLAUDE_CODE_SESSION__ = {json.dumps(session)};</script>"
+        session_json = (
+            json.dumps(session)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026")
+        )
+        injected = f"<script>window.__CLAUDE_CODE_SESSION__ = {session_json};</script>"
         html = html.replace("</body>", f"{injected}\n</body>", 1)
     return HTMLResponse(html)
 
@@ -63,6 +83,12 @@ def _mask_token(token: str) -> str:
 
 
 async def _resolve_session(request: Request) -> Optional[dict]:
+    web_session_id = request.cookies.get(SESSION_COOKIE, "").strip()
+    if web_session_id:
+        web_session = await validate_web_session(web_session_id)
+        if web_session:
+            return {"webSessionId": web_session_id, **web_session}
+
     token = _extract_token_from_request(request)
     if not token:
         return None
@@ -70,6 +96,32 @@ async def _resolve_session(request: Request) -> Optional[dict]:
     if not record:
         return None
     return {"token": token, **record}
+
+
+async def _resolve_websocket_session(websocket: WebSocket) -> Optional[dict]:
+    web_session_id = websocket.cookies.get(SESSION_COOKIE, "").strip()
+    if web_session_id:
+        web_session = await validate_web_session(web_session_id)
+        if web_session:
+            return {"webSessionId": web_session_id, **web_session}
+
+    token = (
+        websocket.query_params.get("claudecodeToken")
+        or websocket.query_params.get("token")
+        or ""
+    ).strip()
+    token_session = await validate_token(token) if token else None
+    if token_session:
+        return {"token": token, **token_session}
+    return None
+
+
+def _cookie_secure(request: Request) -> bool:
+    configured = os.getenv("CLAUDE_SESSION_COOKIE_SECURE", "true").strip().lower()
+    if configured in {"0", "false", "no"}:
+        return False
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
+    return request.url.scheme == "https" or forwarded == "https" or configured == "true"
 
 
 async def _require_privileged_session(request: Request) -> Optional[dict]:
@@ -96,6 +148,75 @@ def health() -> dict:
     return {"status": "ok"}
 
 
+@app.post("/api/auth/firebase")
+async def firebase_login(request: Request) -> JSONResponse:
+    body = await request.json()
+    firebase_token = str(body.get("idToken") or "").strip()
+    try:
+        claims = verify_owner_id_token(firebase_token)
+    except PermissionError as exc:
+        logger.warning("Firebase owner login denied")
+        return JSONResponse(status_code=403, content={"detail": str(exc)})
+    except Exception as exc:
+        logger.warning("Firebase token verification failed: %s", exc)
+        return JSONResponse(status_code=401, content={"detail": "Invalid Firebase authentication"})
+
+    ttl_seconds = 3600
+    try:
+        expires_at = int(claims.get("exp") or 0)
+        if expires_at:
+            ttl_seconds = min(3600, max(60, expires_at - int(time.time())))
+    except (TypeError, ValueError):
+        pass
+
+    session_id, session = await create_web_session(
+        uid=str(claims.get("sub") or claims.get("user_id") or ""),
+        email=claims.get("email"),
+        display_name=claims.get("name"),
+        ttl_seconds=ttl_seconds,
+    )
+    response = JSONResponse({
+        "status": "authenticated",
+        "user": {
+            "uid": session.get("uid"),
+            "email": session.get("email"),
+            "displayName": session.get("displayName"),
+        },
+    })
+    secure_cookie = _cookie_secure(request)
+    same_site = "none" if secure_cookie else "lax"
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_id,
+        max_age=ttl_seconds,
+        httponly=True,
+        secure=secure_cookie,
+        samesite=same_site,
+        path="/",
+    )
+    if secure_cookie:
+        response.headers["set-cookie"] = f'{response.headers["set-cookie"]}; Partitioned'
+    return response
+
+
+@app.post("/api/auth/logout")
+async def firebase_logout(request: Request) -> JSONResponse:
+    session_id = request.cookies.get(SESSION_COOKIE, "").strip()
+    if session_id:
+        await revoke_web_session(session_id)
+    response = JSONResponse({"status": "signed_out"})
+    secure_cookie = _cookie_secure(request)
+    response.delete_cookie(
+        SESSION_COOKIE,
+        path="/",
+        secure=secure_cookie,
+        samesite="none" if secure_cookie else "lax",
+    )
+    if secure_cookie:
+        response.headers["set-cookie"] = f'{response.headers["set-cookie"]}; Partitioned'
+    return response
+
+
 @app.get("/ws/terminal", include_in_schema=False)
 def ws_terminal_http_only() -> JSONResponse:
     """Plain HTTP GET hits this path when the WebSocket upgrade was stripped."""
@@ -109,14 +230,9 @@ def ws_terminal_http_only() -> JSONResponse:
 
 @app.websocket("/ws/terminal")
 async def terminal_socket(websocket: WebSocket) -> None:
-    token = (
-        websocket.query_params.get("claudecodeToken")
-        or websocket.query_params.get("token")
-        or ""
-    ).strip()
-    session = await validate_token(token) if token else None
+    session = await _resolve_websocket_session(websocket)
     if not session:
-        logger.info("WS /ws/terminal denied", extra={"token": _mask_token(token)})
+        logger.info("WS /ws/terminal denied")
         await websocket.accept()
         await websocket.send_text(
             json.dumps({"type": "error", "message": "Access denied: invalid or expired token"})
@@ -128,7 +244,7 @@ async def terminal_socket(websocket: WebSocket) -> None:
     if session.get("role") == "guest" and session.get("accessType", "viewer") == "viewer":
         logger.info(
             "WS /ws/terminal viewer denied",
-            extra={"token": _mask_token(token), "role": session.get("role"), "access": session.get("accessType")},
+            extra={"role": session.get("role"), "access": session.get("accessType")},
         )
         await websocket.accept()
         await websocket.send_text(
@@ -139,7 +255,7 @@ async def terminal_socket(websocket: WebSocket) -> None:
 
     logger.info(
         "WS /ws/terminal accepted",
-        extra={"token": _mask_token(token), "role": session.get("role"), "access": session.get("accessType")},
+        extra={"role": session.get("role"), "access": session.get("accessType")},
     )
     websocket.state.token_meta = session
     await run_terminal_bridge(websocket)

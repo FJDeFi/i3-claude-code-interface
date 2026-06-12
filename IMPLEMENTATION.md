@@ -33,6 +33,11 @@ flowchart LR
 Access to the web UI and terminal is gated by **tokens**. The server validates
 tokens against **Redis**, enforcing **role-based access control**:
 
+Deployment owners can also authenticate through the Intelligence3 parent app.
+The parent sends a Firebase ID token to the embedded Claude Code page with
+`postMessage`; the backend verifies the token UID against `CLAUDE_OWNER_UID`
+and creates a short-lived HttpOnly, Secure, Partitioned Redis-backed session.
+
 - **`owner`** tokens: full access (terminal, token management).
 - **`administrator`/`admin`** tokens: same as owner.
 - **`guest` + `viewer`** tokens: read-only; blocked from opening a terminal.
@@ -95,6 +100,9 @@ tokens against **Redis**, enforcing **role-based access control**:
 | `SSH_TERM_TYPE` | no | Default `xterm-256color` |
 | `SSH_INITIAL_COLS` / `SSH_INITIAL_ROWS` | no | Initial PTY size before the client sends resize |
 | `CLAUDE_CODE_REDIS_URL` | no | Redis connection string; default `redis://127.0.0.1:6379` |
+| `FIREBASE_PROJECT_ID` | yes for Google owner login | Firebase project used to verify ID tokens |
+| `CLAUDE_OWNER_UID` | yes for Google owner login | Firebase UID that owns this deployment |
+| `CLAUDE_SESSION_COOKIE_SECURE` | no | Secure session cookie toggle; default `true` |
 
 ### Client-side token management
 

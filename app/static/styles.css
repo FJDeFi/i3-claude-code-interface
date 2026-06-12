@@ -167,6 +167,25 @@ code {
   border-radius: 24px;
 }
 
+.account-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.account-summary span {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .status-dot {
   flex: 0 0 auto;
   width: 13px;
