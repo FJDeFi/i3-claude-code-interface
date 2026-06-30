@@ -129,6 +129,26 @@
         </form>
       </div>
     </div>
+    <div class="modal hidden" id="api-key-modal" role="dialog" aria-modal="true">
+      <div class="modal__content">
+        <header class="modal__header">
+          <h3>Claude Code API key</h3>
+          <button class="ghost-button" id="api-key-modal-close" type="button">Close</button>
+        </header>
+        <form id="api-key-modal-form" class="modal__form">
+          <label>
+            <span>Anthropic API key</span>
+            <input id="api-key-modal-input" type="password" placeholder="sk-ant-..." autocomplete="off" />
+          </label>
+          <p class="modal__hint">
+            This key is saved in this browser and sent only when starting a Claude Code session.
+          </p>
+          <div class="modal__actions">
+            <button class="primary-button" type="submit">Save and continue</button>
+          </div>
+        </form>
+      </div>
+    </div>
     <div class="modal hidden" id="token-sessions-modal" role="dialog" aria-modal="true">
       <div class="modal__content">
         <header class="modal__header">

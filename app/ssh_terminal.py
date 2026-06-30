@@ -114,7 +114,15 @@ def build_remote_command_argv(
             new_cmd = f"tmux new-session -s {session_q} {f'-c {root_q} ' if root_dir else ''}/bin/bash -il"
 
         # Attach if it exists, otherwise create a session and run the command inside it.
-        attach_or_create = f"tmux has-session -t {session_q} 2>/dev/null && tmux attach -t {session_q} || {new_cmd}"
+        # Hide the tmux status bar so the browser terminal looks like a normal Claude session.
+        attach_existing = (
+            f"tmux set-option -t {session_q} status off 2>/dev/null; "
+            f"tmux attach -t {session_q}"
+        )
+        attach_or_create = (
+            f"tmux set-option -g status off 2>/dev/null; "
+            f"tmux has-session -t {session_q} 2>/dev/null && {attach_existing} || {new_cmd}"
+        )
         return ("bash", "-lc", attach_or_create)
 
     parts: List[str] = []

@@ -23,6 +23,10 @@ const sessionModalFormEl = document.querySelector('#session-modal-form');
 const sessionModalNameEl = document.querySelector('#session-modal-name');
 const sessionModalPathEl = document.querySelector('#session-modal-path');
 const sessionModalCloseEl = document.querySelector('#session-modal-close');
+const apiKeyModalEl = document.querySelector('#api-key-modal');
+const apiKeyModalFormEl = document.querySelector('#api-key-modal-form');
+const apiKeyModalInputEl = document.querySelector('#api-key-modal-input');
+const apiKeyModalCloseEl = document.querySelector('#api-key-modal-close');
 const accountSummaryEl = document.querySelector('#account-summary');
 const accountNameEl = document.querySelector('#account-name');
 const signOutBtnEl = document.querySelector('#sign-out-btn');
@@ -41,6 +45,9 @@ const sessionRootByName = {};
 let allSessions = [];
 let tokenSessionsModalContext = { type: 'create', token: null };
 let tokenSessionsModalSelected = [];
+let apiKeyModalAfterSave = null;
+let apiKeyModalDismissed = false;
+const CLAUDE_API_KEY_STORAGE_KEY = 'i3ClaudeCodeApiKey';
 
 const session = window.__CLAUDE_CODE_SESSION__ || {};
 const sessionToken = getCurrentToken();
@@ -98,6 +105,54 @@ function getCurrentToken() {
 
 function isPrivilegedRole(role) {
   return ['owner', 'administrator', 'admin'].includes(String(role || '').toLowerCase());
+}
+
+function getStoredClaudeApiKey() {
+  try {
+    return localStorage.getItem(CLAUDE_API_KEY_STORAGE_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+function setStoredClaudeApiKey(value) {
+  try {
+    if (value) localStorage.setItem(CLAUDE_API_KEY_STORAGE_KEY, value);
+  } catch {
+    // Ignore browsers that block localStorage.
+  }
+}
+
+function openApiKeyModal(options = {}) {
+  if (!apiKeyModalEl) return;
+  apiKeyModalDismissed = false;
+  apiKeyModalAfterSave = typeof options.afterSave === 'function' ? options.afterSave : null;
+  if (apiKeyModalInputEl) {
+    apiKeyModalInputEl.value = getStoredClaudeApiKey();
+  }
+  apiKeyModalEl.classList.remove('hidden');
+  setTimeout(() => apiKeyModalInputEl?.focus(), 0);
+}
+
+function closeApiKeyModal() {
+  if (!apiKeyModalEl) return;
+  apiKeyModalEl.classList.add('hidden');
+  apiKeyModalAfterSave = null;
+  apiKeyModalDismissed = true;
+}
+
+function saveApiKeyFromModal(event) {
+  if (event) event.preventDefault();
+  const key = (apiKeyModalInputEl?.value || '').trim();
+  if (!key) {
+    setTokenStatus('Enter a Claude Code API key.', 'is-error');
+    return;
+  }
+  setStoredClaudeApiKey(key);
+  setTokenStatus('Claude Code API key saved.', 'is-success');
+  const next = apiKeyModalAfterSave;
+  closeApiKeyModal();
+  if (next) setTimeout(() => next(), 0);
 }
 
 function setConnectionStatus(kind, label) {
@@ -214,6 +269,14 @@ function connect() {
     return;
   }
 
+  const apiKey = getStoredClaudeApiKey();
+  if (!apiKey && isPrivilegedRole(session.role)) {
+    setConnectionStatus('offline', 'Enter Claude Code API key');
+    setConnectionButton('connect');
+    openApiKeyModal({ afterSave: connect });
+    return;
+  }
+
   setConnectionStatus(null, 'Connecting…');
   setConnectionButton('disconnect');
 
@@ -226,6 +289,7 @@ function connect() {
     wsOpened = true;
     let startPayload = { type: 'start' };
     startPayload.session = selected;
+    if (apiKey) startPayload.anthropic_api_key = apiKey;
     const rootDir = sessionRootByName[selected];
     if (rootDir) startPayload.rootDir = rootDir;
     ws.send(JSON.stringify(startPayload));
@@ -549,6 +613,9 @@ async function loadSessions() {
     lastSessionSelection = '';
   }
   setTokenStatus(`Loaded ${String((payload.sessions || []).length)} session(s).`, 'is-success');
+  if (isPrivilegedRole(session.role) && getSelectedSession() && !getStoredClaudeApiKey() && !apiKeyModalDismissed) {
+    openApiKeyModal();
+  }
   return payload.sessions || [];
 }
 
@@ -648,6 +715,9 @@ async function createSessionFromModal(event) {
   lastSessionSelection = name;
   if (path) {
     sessionRootByName[name] = path;
+  }
+  if (isPrivilegedRole(session.role)) {
+    openApiKeyModal({ afterSave: connect });
   }
 }
 
@@ -864,6 +934,24 @@ function initTokenManagement() {
   if (sessionModalEl) {
     sessionModalEl.addEventListener('click', (ev) => {
       if (ev.target === sessionModalEl) closeSessionModal();
+    });
+  }
+
+  if (apiKeyModalFormEl) {
+    apiKeyModalFormEl.addEventListener('submit', (ev) => {
+      saveApiKeyFromModal(ev);
+    });
+  }
+
+  if (apiKeyModalCloseEl) {
+    apiKeyModalCloseEl.addEventListener('click', () => {
+      closeApiKeyModal();
+    });
+  }
+
+  if (apiKeyModalEl) {
+    apiKeyModalEl.addEventListener('click', (ev) => {
+      if (ev.target === apiKeyModalEl) closeApiKeyModal();
     });
   }
 

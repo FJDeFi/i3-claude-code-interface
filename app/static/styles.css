@@ -433,6 +433,13 @@ code {
   background: rgba(255, 255, 255, 0.92);
 }
 
+.modal__hint {
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
 .session-checkbox-list {
   display: grid;
   gap: 8px;
