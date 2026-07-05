@@ -9,7 +9,7 @@
     <meta name="theme-color" content="#fff8ef" />
     <title>Claude Code Interface</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
-    <link rel="stylesheet" href="static/styles.css?v=20260505-clean-hero" />
+    <link rel="stylesheet" href="static/styles.css?v=20260705-collab-polish" />
   </head>
   <body>
     <main class="shell">
@@ -46,6 +46,22 @@
             <button class="primary-button" id="connection-toggle-btn" type="button">Connect</button>
           </div>
         </header>
+
+        <div class="collab-controls" id="collab-controls">
+          <div class="collab-controls__summary">
+            <span class="collab-role-badge" id="collab-role-badge">Not connected</span>
+            <div>
+              <p class="collab-controls__label">Control</p>
+              <p class="collab-controls__status" id="collab-status">Select a session to view control state.</p>
+            </div>
+          </div>
+          <div class="collab-controls__actions">
+            <button class="ghost-button hidden" id="request-control-btn" type="button">Request control</button>
+            <select class="hidden" id="transfer-control-select"></select>
+            <button class="ghost-button hidden" id="transfer-control-btn" type="button">Transfer control</button>
+          </div>
+          <div class="collab-requests hidden" id="collab-requests"></div>
+        </div>
 
         <div class="terminal-wrap" id="terminal-wrap"></div>
       </section>
@@ -107,7 +123,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="static/app.js?v=20260612-firebase-auth" defer></script>
+    <script src="static/app.js?v=20260705-collab-polish" defer></script>
     <div class="modal hidden" id="session-modal" role="dialog" aria-modal="true">
       <div class="modal__content">
         <header class="modal__header">

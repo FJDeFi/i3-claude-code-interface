@@ -176,9 +176,102 @@ def test_tokens_api_list_create_and_revoke(monkeypatch, client):
     assert response.json()["status"] == "revoked"
 
 
+def test_collab_api_status_request_and_transfer(monkeypatch, client):
+    collab_state = {
+        "session": "demo",
+        "masterId": "token:owner-token",
+        "masterLabel": "owner",
+        "controllerId": "token:owner-token",
+        "controllerLabel": "owner",
+        "pendingRequests": [],
+    }
+
+    async def fake_validate_token(token):
+        if token == "owner-token":
+            return {
+                "token": token,
+                "role": "owner",
+                "status": "active",
+                "accessType": "editor",
+                "session": "*",
+            }
+        return {
+            "token": token,
+            "role": "guest",
+            "status": "active",
+            "accessType": "viewer",
+            "session": "demo",
+        }
+
+    async def fake_get_collab_state(name):
+        return {**collab_state, "session": name}
+
+    async def fake_ensure(tmux_session, session):
+        return await fake_get_collab_state(tmux_session)
+
+    async def fake_request_control(name, actor_id, actor_label):
+        collab_state["pendingRequests"] = [{"actorId": actor_id, "label": actor_label}]
+        return await fake_get_collab_state(name)
+
+    async def fake_transfer(name, master_id, target_id, target_label):
+        collab_state["controllerId"] = target_id
+        collab_state["controllerLabel"] = target_label
+        collab_state["pendingRequests"] = []
+        return (
+            await fake_get_collab_state(name),
+            "token:owner-token",
+        )
+
+    async def fake_approve(name, master_id, requester_id):
+        return await fake_transfer(name, master_id, requester_id, "guest")
+
+    async def fake_close_actor(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.main.validate_token", fake_validate_token)
+    monkeypatch.setattr("app.main.get_collab_state", fake_get_collab_state)
+    monkeypatch.setattr("app.main._ensure_collab_for_privileged", fake_ensure)
+    monkeypatch.setattr("app.main.request_control", fake_request_control)
+    monkeypatch.setattr("app.main.transfer_control", fake_transfer)
+    monkeypatch.setattr("app.main.approve_control_request", fake_approve)
+    monkeypatch.setattr("app.main.terminal_hub.close_actor", fake_close_actor)
+
+    response = client.get(
+        "/api/claudecode/sessions/demo/collab",
+        headers={"X-Claude-Code-Token": "owner-token"},
+    )
+    assert response.status_code == 200
+    assert response.json()["isMaster"] is True
+    assert response.json()["isController"] is True
+
+    response = client.post(
+        "/api/claudecode/sessions/demo/request-control",
+        headers={"X-Claude-Code-Token": "guest-token"},
+    )
+    assert response.status_code == 200
+    assert response.json()["pendingRequests"][0]["actorId"] == "token:guest-token"
+
+    response = client.post(
+        "/api/claudecode/sessions/demo/approve-control",
+        headers={"X-Claude-Code-Token": "owner-token"},
+        json={"actorId": "token:guest-token"},
+    )
+    assert response.status_code == 200
+    assert response.json()["controllerId"] == "token:guest-token"
+
+    response = client.post(
+        "/api/claudecode/sessions/demo/transfer-control",
+        headers={"X-Claude-Code-Token": "owner-token"},
+        json={"actorId": "token:guest-token", "label": "guest"},
+    )
+    assert response.status_code == 200
+    assert response.json()["controllerId"] == "token:guest-token"
+
+
 def test_terminal_websocket_accepts(monkeypatch):
-    async def fake_bridge(websocket):
-        await websocket.accept()
+    async def fake_bridge(websocket, **kwargs):
+        assert kwargs["start"][1] == "demo"
+        assert kwargs["accept"] is False
         await websocket.send_text(json.dumps({"type": "error", "message": "stub"}))
         await websocket.close()
 
@@ -192,9 +285,30 @@ def test_terminal_websocket_accepts(monkeypatch):
 
     monkeypatch.setattr("app.main.validate_token", fake_validate_token)
     monkeypatch.setattr("app.main.run_terminal_bridge", fake_bridge)
+    async def fake_ensure_collab(tmux_session, session):
+        return {
+            "masterId": "token:owner-token",
+            "controllerId": "token:owner-token",
+        }
+
+    async def fake_collab_payload(tmux_session, session):
+        return {
+            "session": tmux_session,
+            "actorId": "token:owner-token",
+            "isMaster": True,
+            "isController": True,
+            "collabRole": "master-controller",
+        }
+
+    monkeypatch.setattr("app.main._ensure_collab_for_privileged", fake_ensure_collab)
+    monkeypatch.setattr("app.main._collab_payload", fake_collab_payload)
 
     with TestClient(app) as client:
         with client.websocket_connect("/ws/terminal?claudecodeToken=owner-token") as ws:
+            ws.send_text(json.dumps({"type": "start", "session": "demo"}))
+            msg = ws.receive_text()
+            payload = json.loads(msg)
+            assert payload["type"] == "collab"
             msg = ws.receive_text()
             payload = json.loads(msg)
             assert payload["type"] == "error"
@@ -202,8 +316,7 @@ def test_terminal_websocket_accepts(monkeypatch):
 
 
 def test_terminal_websocket_accepts_firebase_web_session(monkeypatch):
-    async def fake_bridge(websocket):
-        await websocket.accept()
+    async def fake_bridge(websocket, **kwargs):
         assert websocket.state.token_meta["authType"] == "firebase"
         await websocket.send_text(json.dumps({"type": "ready"}))
         await websocket.close()
@@ -220,7 +333,26 @@ def test_terminal_websocket_accepts_firebase_web_session(monkeypatch):
 
     monkeypatch.setattr("app.main.validate_web_session", fake_validate_web_session)
     monkeypatch.setattr("app.main.run_terminal_bridge", fake_bridge)
+    async def fake_ensure_collab(tmux_session, session):
+        return {
+            "masterId": "web:web-session-id",
+            "controllerId": "web:web-session-id",
+        }
+
+    async def fake_collab_payload(tmux_session, session):
+        return {
+            "session": tmux_session,
+            "actorId": "web:web-session-id",
+            "isMaster": True,
+            "isController": True,
+            "collabRole": "master-controller",
+        }
+
+    monkeypatch.setattr("app.main._ensure_collab_for_privileged", fake_ensure_collab)
+    monkeypatch.setattr("app.main._collab_payload", fake_collab_payload)
 
     with TestClient(app, cookies={"claude_code_session": "web-session-id"}) as client:
         with client.websocket_connect("/ws/terminal") as ws:
+            ws.send_text(json.dumps({"type": "start", "session": "demo"}))
+            assert json.loads(ws.receive_text())["type"] == "collab"
             assert json.loads(ws.receive_text())["type"] == "ready"

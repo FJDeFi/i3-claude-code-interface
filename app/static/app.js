@@ -23,6 +23,13 @@ const sessionModalFormEl = document.querySelector('#session-modal-form');
 const sessionModalNameEl = document.querySelector('#session-modal-name');
 const sessionModalPathEl = document.querySelector('#session-modal-path');
 const sessionModalCloseEl = document.querySelector('#session-modal-close');
+const collabControlsEl = document.querySelector('#collab-controls');
+const collabRoleBadgeEl = document.querySelector('#collab-role-badge');
+const collabStatusEl = document.querySelector('#collab-status');
+const requestControlBtnEl = document.querySelector('#request-control-btn');
+const transferControlSelectEl = document.querySelector('#transfer-control-select');
+const transferControlBtnEl = document.querySelector('#transfer-control-btn');
+const collabRequestsEl = document.querySelector('#collab-requests');
 const apiKeyModalEl = document.querySelector('#api-key-modal');
 const apiKeyModalFormEl = document.querySelector('#api-key-modal-form');
 const apiKeyModalInputEl = document.querySelector('#api-key-modal-input');
@@ -37,8 +44,10 @@ let fitFrame = 0;
 let observedTerminalSize = '';
 let tokenRefreshTimer = null;
 let sessionRefreshTimer = null;
+let collabRefreshTimer = null;
 /** @type {WebSocket | null} */
 let socket = null;
+let reconnectTimer = null;
 let lastSessionSelection = '';
 let selectedTokenSessions = [];
 const sessionRootByName = {};
@@ -47,6 +56,7 @@ let tokenSessionsModalContext = { type: 'create', token: null };
 let tokenSessionsModalSelected = [];
 let apiKeyModalAfterSave = null;
 let apiKeyModalDismissed = false;
+let currentCollabState = null;
 const CLAUDE_API_KEY_STORAGE_KEY = 'i3ClaudeCodeApiKey';
 
 const session = window.__CLAUDE_CODE_SESSION__ || {};
@@ -171,6 +181,22 @@ function setConnectionButton(state) {
   connectionToggleBtn.disabled = false;
 }
 
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function scheduleReconnect(message = 'Control changed, reconnecting…') {
+  clearReconnectTimer();
+  setConnectionStatus(null, message);
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null;
+    void connect();
+  }, 500);
+}
+
 function wsUrl() {
   const loc = window.location;
   const scheme = loc.protocol === 'https:' ? 'wss' : 'ws';
@@ -217,6 +243,7 @@ function ensureTerm() {
   term.loadAddon(fitAddon);
   term.open(terminalWrapEl);
   term.onData((data) => {
+    if (!currentCollabState?.isController) return;
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(new TextEncoder().encode(data));
     }
@@ -239,6 +266,7 @@ function scheduleFit() {
 
 function sendResize() {
   if (!socket || socket.readyState !== WebSocket.OPEN || !term) return;
+  if (!currentCollabState?.isController) return;
   socket.send(
     JSON.stringify({
       type: 'resize',
@@ -249,6 +277,7 @@ function sendResize() {
 }
 
 function disconnect() {
+  clearReconnectTimer();
   if (socket) {
     socket.close();
     socket = null;
@@ -257,7 +286,8 @@ function disconnect() {
   setConnectionStatus('offline', 'Disconnected');
 }
 
-function connect() {
+async function connect() {
+  clearReconnectTimer();
   disconnect();
   ensureTerm();
   term.reset();
@@ -269,8 +299,9 @@ function connect() {
     return;
   }
 
+  await loadCollabState();
   const apiKey = getStoredClaudeApiKey();
-  if (!apiKey && isPrivilegedRole(session.role)) {
+  if (!apiKey && isPrivilegedRole(session.role) && currentCollabState?.isController !== false) {
     setConnectionStatus('offline', 'Enter Claude Code API key');
     setConnectionButton('connect');
     openApiKeyModal({ afterSave: connect });
@@ -304,6 +335,10 @@ function connect() {
         if (msg.type === 'error' && msg.message) {
           term.writeln(`\r\n\x1b[31m${msg.message}\x1b[0m\r\n`);
           setConnectionStatus('offline', msg.message);
+        } else if (msg.type === 'collab' && msg.state) {
+          currentCollabState = msg.state;
+          renderCollabState(msg.state);
+          setConnectionStatus(msg.state.isController ? 'online' : null, msg.state.isController ? 'Connected as controller' : 'Connected as viewer');
         }
       } catch {
         // ignore non-JSON text
@@ -327,6 +362,10 @@ function connect() {
     setConnectionButton('connect');
     const reason = ev.reason ? `: ${ev.reason}` : '';
     const detail = `code ${ev.code}${reason}`;
+    if (ev.code === 4409) {
+      scheduleReconnect();
+      return;
+    }
     if (!wsOpened) {
       setConnectionStatus('offline', `WebSocket failed (${detail})`);
     } else if (ev.code === 1000) {
@@ -357,6 +396,189 @@ function setTokenStatus(message, kind = '') {
   if (!tokenStatusEl) return;
   tokenStatusEl.textContent = message;
   tokenStatusEl.className = `token-status ${kind}`.trim();
+}
+
+function stopCollabAutoRefresh() {
+  if (collabRefreshTimer) {
+    clearInterval(collabRefreshTimer);
+    collabRefreshTimer = null;
+  }
+}
+
+function startCollabAutoRefresh() {
+  stopCollabAutoRefresh();
+  collabRefreshTimer = window.setInterval(() => {
+    void loadCollabState();
+  }, 3000);
+}
+
+function selectedSessionPath(path) {
+  const selected = getSelectedSession();
+  if (!selected) return '';
+  return `/api/claudecode/sessions/${encodeURIComponent(selected)}${path}`;
+}
+
+async function loadCollabState() {
+  const path = selectedSessionPath('/collab');
+  if (!path) {
+    currentCollabState = null;
+    renderCollabState(null);
+    return null;
+  }
+  const response = await apiFetch(path);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    currentCollabState = null;
+    renderCollabState(null, payload.detail || 'Control state unavailable.');
+    return null;
+  }
+  const wasController = Boolean(currentCollabState?.isController);
+  currentCollabState = payload;
+  renderCollabState(payload);
+  if (socket?.readyState === WebSocket.OPEN && wasController !== Boolean(payload.isController)) {
+    disconnect();
+    scheduleReconnect();
+  }
+  return payload;
+}
+
+function renderCollabState(state, fallbackMessage = '') {
+  if (!collabControlsEl || !collabStatusEl) return;
+  if (!state) {
+    if (collabRoleBadgeEl) {
+      collabRoleBadgeEl.textContent = 'No session';
+      collabRoleBadgeEl.className = 'collab-role-badge';
+    }
+    collabStatusEl.textContent = fallbackMessage || 'Select a session to view control state.';
+    requestControlBtnEl?.classList.add('hidden');
+    transferControlSelectEl?.classList.add('hidden');
+    transferControlBtnEl?.classList.add('hidden');
+    collabRequestsEl?.classList.add('hidden');
+    return;
+  }
+
+  const controller = state.controllerLabel || 'Unknown';
+  const master = state.masterLabel || 'Unknown';
+  const role = state.isMaster
+    ? (state.isController ? 'Master, controlling' : 'Master')
+    : (state.isController ? 'Controller' : 'Viewer');
+  const pendingForMe = (state.pendingRequests || []).some((request) => request.actorId === state.actorId);
+  collabStatusEl.textContent = `Controller: ${controller}. Master: ${master}.`;
+
+  if (collabRoleBadgeEl) {
+    collabRoleBadgeEl.textContent = pendingForMe && !state.isController && !state.isMaster ? 'Request pending' : role;
+    collabRoleBadgeEl.className = `collab-role-badge ${roleClassName(state, pendingForMe)}`.trim();
+  }
+
+  if (requestControlBtnEl) {
+    requestControlBtnEl.classList.toggle('hidden', Boolean(state.isController || state.isMaster));
+    requestControlBtnEl.disabled = pendingForMe;
+    requestControlBtnEl.textContent = pendingForMe ? 'Request sent' : 'Request control';
+  }
+
+  const transferCandidates = (state.participants || []).slice();
+  if (state.isMaster && state.actorId && state.actorId !== state.controllerId) {
+    transferCandidates.unshift({
+      actorId: state.actorId,
+      label: `${state.actorLabel || 'Me'} (me)`,
+    });
+  }
+  const seenTransferCandidates = new Set();
+  const transferable = transferCandidates
+    .filter((p) => p.actorId && p.actorId !== state.controllerId)
+    .filter((p) => {
+      if (seenTransferCandidates.has(p.actorId)) return false;
+      seenTransferCandidates.add(p.actorId);
+      return true;
+    });
+  if (transferControlSelectEl && transferControlBtnEl) {
+    const showTransfer = Boolean(state.isMaster && transferable.length);
+    transferControlSelectEl.classList.toggle('hidden', !showTransfer);
+    transferControlBtnEl.classList.toggle('hidden', !showTransfer);
+    transferControlSelectEl.innerHTML = '';
+    for (const participant of transferable) {
+      transferControlSelectEl.appendChild(new Option(participant.label || participant.actorId, participant.actorId));
+    }
+  }
+
+  if (collabRequestsEl) {
+    const requests = state.isMaster ? (state.pendingRequests || []) : [];
+    collabRequestsEl.classList.toggle('hidden', requests.length === 0);
+    collabRequestsEl.innerHTML = requests
+      .map((request) => `
+        <span>${escapeHtml(request.label || request.actorId || 'Viewer')} requested control</span>
+        <button class="ghost-button" type="button" data-approve-control="${escapeHtml(request.actorId || '')}">Approve</button>
+      `)
+      .join('');
+    collabRequestsEl.querySelectorAll('[data-approve-control]').forEach((button) => {
+      button.addEventListener('click', () => {
+        void approveControl(button.getAttribute('data-approve-control') || '');
+      });
+    });
+  }
+}
+
+function roleClassName(state, pendingForMe) {
+  if (pendingForMe && !state.isController && !state.isMaster) return 'is-pending';
+  if (state.isMaster && state.isController) return 'is-master-controller';
+  if (state.isMaster) return 'is-master';
+  if (state.isController) return 'is-controller';
+  return 'is-viewer';
+}
+
+async function requestControl() {
+  const path = selectedSessionPath('/request-control');
+  if (!path) return;
+  const response = await apiFetch(path, { method: 'POST' });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    setTokenStatus(payload.detail || 'Failed to request control.', 'is-error');
+    return;
+  }
+  currentCollabState = payload;
+  renderCollabState(payload);
+  setConnectionStatus(null, 'Control request sent');
+  setTokenStatus('Control request sent.', 'is-success');
+}
+
+async function approveControl(actorId) {
+  const path = selectedSessionPath('/approve-control');
+  if (!path || !actorId) return;
+  const response = await apiFetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actorId }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    setTokenStatus(payload.detail || 'Failed to approve control.', 'is-error');
+    return;
+  }
+  currentCollabState = payload;
+  renderCollabState(payload);
+  setConnectionStatus(null, 'Control transferred, reconnecting…');
+  setTokenStatus('Control transferred.', 'is-success');
+}
+
+async function transferControl() {
+  const path = selectedSessionPath('/transfer-control');
+  const actorId = transferControlSelectEl?.value || '';
+  if (!path || !actorId) return;
+  const label = transferControlSelectEl?.selectedOptions?.[0]?.textContent || '';
+  const response = await apiFetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ actorId, label }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    setTokenStatus(payload.detail || 'Failed to transfer control.', 'is-error');
+    return;
+  }
+  currentCollabState = payload;
+  renderCollabState(payload);
+  setConnectionStatus(null, 'Control transferred, reconnecting…');
+  setTokenStatus('Control transferred.', 'is-success');
 }
 
 function formatTokenDate(value) {
@@ -407,7 +629,8 @@ async function copyToken(token) {
 }
 
 function getShareableTokenLink(token) {
-  const url = new URL('/claudecode/', window.location.origin);
+  const basePath = window.location.pathname.startsWith('/claudecode') ? '/claudecode/' : '/';
+  const url = new URL(basePath, window.location.origin);
   url.searchParams.set('claudecodeToken', token);
   return url.toString();
 }
@@ -616,6 +839,7 @@ async function loadSessions() {
   if (isPrivilegedRole(session.role) && getSelectedSession() && !getStoredClaudeApiKey() && !apiKeyModalDismissed) {
     openApiKeyModal();
   }
+  await loadCollabState();
   return payload.sessions || [];
 }
 
@@ -713,6 +937,7 @@ async function createSessionFromModal(event) {
   await loadSessions();
   if (sessionSelectEl) sessionSelectEl.value = name;
   lastSessionSelection = name;
+  await loadCollabState();
   if (path) {
     sessionRootByName[name] = path;
   }
@@ -1011,12 +1236,15 @@ function initSessionPicker() {
       setConnectionStatus('offline', 'Disconnected (session changed)');
     }
     lastSessionSelection = sessionSelectEl.value;
+    void loadCollabState();
   });
 }
 
 window.addEventListener('beforeunload', () => {
+  clearReconnectTimer();
   stopTokenAutoRefresh();
   stopSessionAutoRefresh();
+  stopCollabAutoRefresh();
 });
 window.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') {
@@ -1030,12 +1258,21 @@ connectionToggleBtn.addEventListener('click', () => {
     disconnect();
     return;
   }
-  connect();
+  void connect();
+});
+
+requestControlBtnEl?.addEventListener('click', () => {
+  void requestControl();
+});
+
+transferControlBtnEl?.addEventListener('click', () => {
+  void transferControl();
 });
 
 setConnectionButton('connect');
 void loadSessions();
 startSessionAutoRefresh();
+startCollabAutoRefresh();
 initSessionPicker();
 initTokenManagement();
 
