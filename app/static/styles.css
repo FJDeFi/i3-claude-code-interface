@@ -167,6 +167,25 @@ code {
   border-radius: 24px;
 }
 
+.account-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.account-summary span {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .status-dot {
   flex: 0 0 auto;
   width: 13px;
@@ -221,6 +240,118 @@ code {
 
 .hidden {
   display: none !important;
+}
+
+.collab-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 14px;
+  align-items: center;
+  margin: -2px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 122, 26, 0.2);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(255, 250, 242, 0.95), rgba(255, 244, 230, 0.72));
+}
+
+.collab-controls__summary {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.collab-role-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 112px;
+  min-height: 34px;
+  border: 1px solid rgba(123, 102, 85, 0.22);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fffaf2;
+  color: #5c493a;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.collab-role-badge.is-master-controller,
+.collab-role-badge.is-master {
+  border-color: rgba(12, 131, 88, 0.25);
+  background: #eaf8f0;
+  color: #08704a;
+}
+
+.collab-role-badge.is-controller {
+  border-color: rgba(255, 122, 26, 0.35);
+  background: #fff0df;
+  color: #b44805;
+}
+
+.collab-role-badge.is-viewer {
+  border-color: rgba(74, 117, 180, 0.28);
+  background: #edf5ff;
+  color: #275d98;
+}
+
+.collab-role-badge.is-pending {
+  border-color: rgba(146, 94, 8, 0.28);
+  background: #fff8db;
+  color: #805600;
+}
+
+.collab-controls__label {
+  margin: 0 0 2px;
+  color: #7b6655;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.collab-controls__status {
+  margin: 0;
+  color: #241b13;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.collab-controls__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.collab-controls__actions select {
+  min-height: 36px;
+  border: 1px solid rgba(255, 122, 26, 0.28);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fffaf2;
+  color: #241b13;
+}
+
+.collab-requests {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 4px;
+  color: #5c493a;
+  font-size: 0.86rem;
+}
+
+.collab-requests span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: rgba(255, 248, 219, 0.9);
+  color: #705011;
+  font-weight: 800;
 }
 
 .panel-header {
@@ -412,6 +543,13 @@ code {
   border: 1px solid rgba(239, 128, 28, 0.24);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.92);
+}
+
+.modal__hint {
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .session-checkbox-list {

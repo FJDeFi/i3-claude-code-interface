@@ -8,13 +8,18 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import fcntl
 import json
 import logging
 import os
+import pty
 import shlex
+import signal
+import struct
+import termios
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, List, Optional, Tuple, Union
 
 import asyncssh
 from asyncssh import PIPE, STDOUT
@@ -26,6 +31,7 @@ from .logging_setup import setup_logger
 logger = setup_logger("claude_code.ssh")
 START_MESSAGE_TIMEOUT_SECONDS = 3.0
 OPENCLAW_ENV_FILE = Path("/etc/openclaw.env")
+OutputCallback = Callable[[bytes], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -114,7 +120,15 @@ def build_remote_command_argv(
             new_cmd = f"tmux new-session -s {session_q} {f'-c {root_q} ' if root_dir else ''}/bin/bash -il"
 
         # Attach if it exists, otherwise create a session and run the command inside it.
-        attach_or_create = f"tmux has-session -t {session_q} 2>/dev/null && tmux attach -t {session_q} || {new_cmd}"
+        # Hide the tmux status bar so the browser terminal looks like a normal Claude session.
+        attach_existing = (
+            f"tmux set-option -t {session_q} status off 2>/dev/null; "
+            f"tmux attach -t {session_q}"
+        )
+        attach_or_create = (
+            f"tmux set-option -g status off 2>/dev/null; "
+            f"tmux has-session -t {session_q} 2>/dev/null && {attach_existing} || {new_cmd}"
+        )
         return ("bash", "-lc", attach_or_create)
 
     parts: List[str] = []
@@ -182,8 +196,36 @@ def _known_hosts_argument(cfg: SshBridgeConfig) -> Any:
     return ()
 
 
-async def run_terminal_bridge(websocket: WebSocket) -> None:
-    await websocket.accept()
+async def run_terminal_bridge(
+    websocket: WebSocket,
+    *,
+    start: Optional["StartPayload"] = None,
+    output_callback: Optional[OutputCallback] = None,
+    accept: bool = True,
+) -> None:
+    if accept:
+        await websocket.accept()
+    if start is None:
+        try:
+            start = await receive_terminal_start(websocket)
+        except WebSocketDisconnect:
+            return
+    # start can be a tuple (api_key, tmux_session, root_dir) or just api_key
+    if isinstance(start, tuple):
+        api_key, tmux_session, root_dir = start
+    else:
+        api_key, tmux_session, root_dir = start, None, None
+
+    if os.getenv("CLAUDE_CODE_LOCAL_TMUX", "").strip().lower() in {"1", "true", "yes"}:
+        await _run_local_terminal_bridge(
+            websocket,
+            api_key,
+            tmux_session,
+            root_dir,
+            output_callback=output_callback,
+        )
+        return
+
     try:
         cfg = load_ssh_bridge_config()
     except ValueError as exc:
@@ -194,15 +236,6 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
         await websocket.close(code=4400)
         return
 
-    try:
-        start = await _receive_start_api_key(websocket)
-        # start can be a tuple (api_key, tmux_session, root_dir) or just api_key
-        if isinstance(start, tuple):
-            api_key, tmux_session, root_dir = start
-        else:
-            api_key, tmux_session, root_dir = start, None, None
-    except WebSocketDisconnect:
-        return
     logger.info(
         "ssh start tmux_session=%s root_dir=%s api_key=%s",
         tmux_session or "",
@@ -243,7 +276,13 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
             term_size=(cols, rows),
             encoding=None,
         ) as process:
-            await _bridge_loop(websocket, process, cols, rows)
+            await _bridge_loop(
+                websocket,
+                process,
+                cols,
+                rows,
+                output_callback=output_callback,
+            )
     except WebSocketDisconnect:
         pass
     except Exception as exc:
@@ -257,10 +296,137 @@ async def run_terminal_bridge(websocket: WebSocket) -> None:
         await conn.wait_closed()
 
 
+async def _run_local_terminal_bridge(
+    websocket: WebSocket,
+    api_key: Optional[str],
+    tmux_session: Optional[str],
+    root_dir: Optional[str],
+    *,
+    output_callback: Optional[OutputCallback] = None,
+) -> None:
+    cols, rows = _default_term_size()
+    argv = build_remote_command_argv(api_key, tmux_session=tmux_session, root_dir=root_dir)
+    logger.info(
+        "local terminal command tmux_session=%s root_dir=%s argv=%s",
+        tmux_session or "",
+        root_dir or "",
+        " ".join(argv),
+    )
+    try:
+        await _local_pty_bridge(
+            websocket,
+            argv,
+            cols,
+            rows,
+            output_callback=output_callback,
+        )
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.exception("local terminal bridge session failed")
+        with contextlib.suppress(Exception):
+            await websocket.send_text(
+                json.dumps({"type": "error", "message": f"Server error: {exc}"})
+            )
+
+
+async def _local_pty_bridge(
+    websocket: WebSocket,
+    argv: Tuple[str, ...],
+    cols: int,
+    rows: int,
+    *,
+    output_callback: Optional[OutputCallback] = None,
+) -> None:
+    master_fd, slave_fd = pty.openpty()
+    _set_pty_size(slave_fd, cols, rows)
+    child_env = {
+        **os.environ,
+        "TERM": os.getenv("SSH_TERM_TYPE", "xterm-256color"),
+    }
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        env=child_env,
+        start_new_session=True,
+    )
+    os.close(slave_fd)
+    os.set_blocking(master_fd, False)
+
+    async def pump_out() -> None:
+        loop = asyncio.get_running_loop()
+        while True:
+            try:
+                chunk = await loop.run_in_executor(None, os.read, master_fd, 65536)
+            except BlockingIOError:
+                await asyncio.sleep(0.01)
+                continue
+            except OSError:
+                return
+            if not chunk:
+                return
+            await websocket.send_bytes(chunk)
+            if output_callback is not None:
+                await output_callback(chunk)
+
+    async def pump_in() -> None:
+        while True:
+            message = await websocket.receive()
+            mtype = message.get("type")
+            if mtype == "websocket.disconnect":
+                return
+            if mtype != "websocket.receive":
+                continue
+            if "bytes" in message and message["bytes"] is not None:
+                os.write(master_fd, message["bytes"])
+            elif "text" in message and message["text"] is not None:
+                resized = _try_parse_resize(message["text"])
+                if resized:
+                    new_cols, new_rows = resized
+                    _set_pty_size(master_fd, new_cols, new_rows)
+
+    out_task = asyncio.create_task(pump_out())
+    in_task = asyncio.create_task(pump_in())
+    wait_task = asyncio.create_task(proc.wait())
+    try:
+        done, pending = await asyncio.wait(
+            {out_task, in_task, wait_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        for task in done:
+            if task.cancelled():
+                continue
+            exc = task.exception()
+            if exc is not None and not isinstance(exc, WebSocketDisconnect):
+                raise exc
+    finally:
+        for task in (out_task, in_task, wait_task):
+            if not task.done():
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGHUP)
+        with contextlib.suppress(Exception):
+            proc.terminate()
+        with contextlib.suppress(Exception):
+            os.close(master_fd)
+
+
+def _set_pty_size(fd: int, cols: int, rows: int) -> None:
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+
 StartPayload = Union[str, Tuple[Optional[str], Optional[str], Optional[str]]]
 
 
-async def _receive_start_api_key(websocket: WebSocket) -> Optional[StartPayload]:
+async def receive_terminal_start(websocket: WebSocket) -> Optional[StartPayload]:
     """Read the initial WebSocket start message containing the session API key."""
 
     loop = asyncio.get_running_loop()
@@ -300,6 +466,9 @@ async def _receive_start_api_key(websocket: WebSocket) -> Optional[StartPayload]
         return api_key_val
 
 
+_receive_start_api_key = receive_terminal_start
+
+
 def _default_term_size() -> Tuple[int, int]:
     try:
         cols = int(os.getenv("SSH_INITIAL_COLS", "120"))
@@ -314,6 +483,8 @@ async def _bridge_loop(
     process: asyncssh.SSHClientProcess[bytes],
     cols: int,
     rows: int,
+    *,
+    output_callback: Optional[OutputCallback] = None,
 ) -> None:
     current_cols, current_rows = cols, rows
 
@@ -324,6 +495,8 @@ async def _bridge_loop(
             if not chunk:
                 return
             await websocket.send_bytes(chunk)
+            if output_callback is not None:
+                await output_callback(chunk)
 
     async def pump_in() -> None:
         nonlocal current_cols, current_rows

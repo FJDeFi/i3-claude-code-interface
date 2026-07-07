@@ -9,7 +9,7 @@
     <meta name="theme-color" content="#fff8ef" />
     <title>Claude Code Interface</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
-    <link rel="stylesheet" href="static/styles.css?v=20260505-clean-hero" />
+    <link rel="stylesheet" href="static/styles.css?v=20260705-collab-polish" />
   </head>
   <body>
     <main class="shell">
@@ -22,6 +22,10 @@
           <div>
             <p class="status-label">Session</p>
             <p class="status-value" id="server-status">Disconnected</p>
+          </div>
+          <div class="account-summary hidden" id="account-summary">
+            <span id="account-name"></span>
+            <button class="ghost-button" id="sign-out-btn" type="button">Sign out</button>
           </div>
         </div>
       </section>
@@ -42,6 +46,22 @@
             <button class="primary-button" id="connection-toggle-btn" type="button">Connect</button>
           </div>
         </header>
+
+        <div class="collab-controls" id="collab-controls">
+          <div class="collab-controls__summary">
+            <span class="collab-role-badge" id="collab-role-badge">Not connected</span>
+            <div>
+              <p class="collab-controls__label">Control</p>
+              <p class="collab-controls__status" id="collab-status">Select a session to view control state.</p>
+            </div>
+          </div>
+          <div class="collab-controls__actions">
+            <button class="ghost-button hidden" id="request-control-btn" type="button">Request control</button>
+            <select class="hidden" id="transfer-control-select"></select>
+            <button class="ghost-button hidden" id="transfer-control-btn" type="button">Transfer control</button>
+          </div>
+          <div class="collab-requests hidden" id="collab-requests"></div>
+        </div>
 
         <div class="terminal-wrap" id="terminal-wrap"></div>
       </section>
@@ -103,7 +123,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="static/app.js?v=20260505-clean-hero" defer></script>
+    <script src="static/app.js?v=20260705-collab-polish" defer></script>
     <div class="modal hidden" id="session-modal" role="dialog" aria-modal="true">
       <div class="modal__content">
         <header class="modal__header">
@@ -121,6 +141,26 @@
           </label>
           <div class="modal__actions">
             <button class="primary-button" type="submit">Create session</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="modal hidden" id="api-key-modal" role="dialog" aria-modal="true">
+      <div class="modal__content">
+        <header class="modal__header">
+          <h3>Claude Code API key</h3>
+          <button class="ghost-button" id="api-key-modal-close" type="button">Close</button>
+        </header>
+        <form id="api-key-modal-form" class="modal__form">
+          <label>
+            <span>Anthropic API key</span>
+            <input id="api-key-modal-input" type="password" placeholder="sk-ant-..." autocomplete="off" />
+          </label>
+          <p class="modal__hint">
+            This key is saved in this browser and sent only when starting a Claude Code session.
+          </p>
+          <div class="modal__actions">
+            <button class="primary-button" type="submit">Save and continue</button>
           </div>
         </form>
       </div>
