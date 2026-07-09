@@ -6,3 +6,4 @@ asyncssh>=2.14
 pytest>=8.0
 redis>=4.7
 google-auth>=2.29
+requests>=2.31
