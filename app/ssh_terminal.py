@@ -129,7 +129,7 @@ def build_remote_command_argv(
         )
         new_cmd = (
             f"{create_new} && "
-            f"tmux set-option -t {session_q} status off 2>/dev/null && "
+            f"(tmux set-option -t {session_q} status off 2>/dev/null || true); "
             f"{attach_cmd}"
         )
         attach_or_create = (
