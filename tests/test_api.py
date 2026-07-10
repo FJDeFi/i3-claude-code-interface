@@ -201,7 +201,9 @@ def test_create_claudecode_session_hides_tmux_status(monkeypatch, client):
     response = client.post("/api/claudecode/sessions", json={"name": "demo"})
 
     assert response.status_code == 200
-    assert commands == ["tmux new -d -s demo && tmux set-option -t demo status off"]
+    assert commands == [
+        "tmux new -d -s demo && (tmux set-option -t demo status off 2>/dev/null || true)"
+    ]
 
 
 def test_collab_api_status_request_and_transfer(monkeypatch, client):
