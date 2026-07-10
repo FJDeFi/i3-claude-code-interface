@@ -176,6 +176,34 @@ def test_tokens_api_list_create_and_revoke(monkeypatch, client):
     assert response.json()["status"] == "revoked"
 
 
+def test_create_claudecode_session_hides_tmux_status(monkeypatch, client):
+    commands = []
+
+    async def fake_require_privileged_session(request):
+        return {
+            "token": "owner-token",
+            "role": "owner",
+            "status": "active",
+            "accessType": "editor",
+        }
+
+    async def fake_ensure_collab_state(*args, **kwargs):
+        return None
+
+    def fake_run_cmd(cmd):
+        commands.append(cmd)
+        return 0, "", ""
+
+    monkeypatch.setattr("app.main._require_privileged_session", fake_require_privileged_session)
+    monkeypatch.setattr("app.main.ensure_collab_state", fake_ensure_collab_state)
+    monkeypatch.setattr("app.main._run_cmd", fake_run_cmd)
+
+    response = client.post("/api/claudecode/sessions", json={"name": "demo"})
+
+    assert response.status_code == 200
+    assert commands == ["tmux new -d -s demo && tmux set-option -t demo status off"]
+
+
 def test_collab_api_status_request_and_transfer(monkeypatch, client):
     collab_state = {
         "session": "demo",
