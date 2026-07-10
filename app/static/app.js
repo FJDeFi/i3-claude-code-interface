@@ -556,7 +556,7 @@ async function approveControl(actorId) {
   }
   currentCollabState = payload;
   renderCollabState(payload);
-  setConnectionStatus(null, 'Control transferred, reconnecting…');
+  scheduleReconnect('Control transferred, reconnecting…');
   setTokenStatus('Control transferred.', 'is-success');
 }
 
@@ -577,7 +577,7 @@ async function transferControl() {
   }
   currentCollabState = payload;
   renderCollabState(payload);
-  setConnectionStatus(null, 'Control transferred, reconnecting…');
+  scheduleReconnect('Control transferred, reconnecting…');
   setTokenStatus('Control transferred.', 'is-success');
 }
 
@@ -595,26 +595,40 @@ function maskToken(token) {
 }
 
 async function writeTextToClipboard(text) {
+  const writeWithFallbackField = () => {
+    const fallbackField = document.createElement('textarea');
+    fallbackField.value = text;
+    fallbackField.setAttribute('readonly', 'readonly');
+    fallbackField.style.position = 'fixed';
+    fallbackField.style.top = '0';
+    fallbackField.style.left = '0';
+    fallbackField.style.width = '1px';
+    fallbackField.style.height = '1px';
+    fallbackField.style.opacity = '0';
+    document.body.appendChild(fallbackField);
+    fallbackField.focus();
+    fallbackField.select();
+    fallbackField.setSelectionRange(0, fallbackField.value.length);
+
+    try {
+      return document.execCommand('copy');
+    } finally {
+      document.body.removeChild(fallbackField);
+    }
+  };
+
   if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return true;
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Embedded pages can reject async clipboard writes; keep the user gesture
+      // alive and try the legacy copy path before reporting failure.
+    }
   }
 
-  const fallbackField = document.createElement('textarea');
-  fallbackField.value = text;
-  fallbackField.setAttribute('readonly', 'readonly');
-  fallbackField.style.position = 'fixed';
-  fallbackField.style.opacity = '0';
-  fallbackField.style.left = '-9999px';
-  document.body.appendChild(fallbackField);
-  fallbackField.select();
-
-  try {
-    const copied = document.execCommand('copy');
-    return copied;
-  } finally {
-    document.body.removeChild(fallbackField);
-  }
+  if (writeWithFallbackField()) return true;
+  throw new Error('Clipboard copy was rejected by the browser.');
 }
 
 async function copyToken(token) {
@@ -810,9 +824,6 @@ function closeTokenSessionsModal() {
   if (!tokenSessionsModalEl) return;
   tokenSessionsModalEl.classList.add('hidden');
   if (tokenSessionsModalFormEl) tokenSessionsModalFormEl.reset();
-  if (tokenSessionModeEl && selectedTokenSessions.length === 0) {
-    tokenSessionModeEl.value = 'all';
-  }
 }
 
 async function loadSessions() {
@@ -1186,11 +1197,6 @@ function initTokenManagement() {
         openTokenSessionsModalForCreate();
       } else {
         selectedTokenSessions = [];
-      }
-    });
-    tokenSessionModeEl.addEventListener('click', () => {
-      if (tokenSessionModeEl.value === 'specific') {
-        openTokenSessionsModalForCreate();
       }
     });
   }
