@@ -600,11 +600,11 @@ async def create_claudecode_session(request: Request) -> JSONResponse:
     cmd = f"tmux new -d -s {name_q}"
     if path:
         cmd = f"tmux new -d -s {name_q} -c {shlex.quote(path)}"
-    cmd = f"{cmd} && (tmux set-option -t {name_q} status off 2>/dev/null || true)"
 
     rc, out, err = _run_cmd(cmd)
     if rc != 0:
         return JSONResponse(status_code=500, content={"detail": "Failed to create session", "error": err})
+    _run_cmd(f"tmux set-option -t {name_q} status off")
     await ensure_collab_state(
         name,
         master_id=_session_actor_id(session),
