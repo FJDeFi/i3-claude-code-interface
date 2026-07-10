@@ -596,9 +596,11 @@ async def create_claudecode_session(request: Request) -> JSONResponse:
     if not _safe_session_name(name):
         return JSONResponse(status_code=400, content={"detail": "Invalid session name"})
 
-    cmd = f"tmux new -d -s {shlex.quote(name)}"
+    name_q = shlex.quote(name)
+    cmd = f"tmux new -d -s {name_q}"
     if path:
-        cmd = f"tmux new -d -s {shlex.quote(name)} -c {shlex.quote(path)}"
+        cmd = f"tmux new -d -s {name_q} -c {shlex.quote(path)}"
+    cmd = f"{cmd} && tmux set-option -t {name_q} status off"
 
     rc, out, err = _run_cmd(cmd)
     if rc != 0:

@@ -105,29 +105,39 @@ def build_remote_command_argv(
     if tmux_session:
         session_q = shlex.quote(tmux_session)
         root_q = shlex.quote(root_dir) if root_dir else ""
+        tmux_create_prefix = f"tmux new-session -d -s {session_q} {f'-c {root_q} ' if root_dir else ''}"
 
         if remote_cmd:
             if effective_api_key:
                 inner = f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}; {remote_cmd}"
-                new_cmd = f"tmux new-session -s {session_q} {f'-c {root_q} ' if root_dir else ''}bash -lc {shlex.quote(inner)}"
+                create_new = f"{tmux_create_prefix}bash -lc {shlex.quote(inner)}"
             else:
-                new_cmd = f"tmux new-session -s {session_q} {f'-c {root_q} ' if root_dir else ''}bash -lc {shlex.quote(remote_cmd)}"
+                create_new = f"{tmux_create_prefix}bash -lc {shlex.quote(remote_cmd)}"
         elif effective_api_key:
             root_arg = f" --root {root_q}" if root_dir else ""
             inner = f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}; exec {shlex.quote(claude_cmd)}{root_arg}"
-            new_cmd = f"tmux new-session -s {session_q} {f'-c {root_q} ' if root_dir else ''}bash -lc {shlex.quote(inner)}"
+            create_new = f"{tmux_create_prefix}bash -lc {shlex.quote(inner)}"
         else:
-            new_cmd = f"tmux new-session -s {session_q} {f'-c {root_q} ' if root_dir else ''}/bin/bash -il"
+            create_new = f"{tmux_create_prefix}/bin/bash -il"
 
         # Attach if it exists, otherwise create a session and run the command inside it.
         # Hide the tmux status bar so the browser terminal looks like a normal Claude session.
+        attach_cmd = f"tmux attach -t {session_q}"
         attach_existing = (
             f"tmux set-option -t {session_q} status off 2>/dev/null; "
-            f"tmux attach -t {session_q}"
+            f"{attach_cmd}"
+        )
+        new_cmd = (
+            f"{create_new} && "
+            f"tmux set-option -t {session_q} status off 2>/dev/null && "
+            f"{attach_cmd}"
         )
         attach_or_create = (
             f"tmux set-option -g status off 2>/dev/null; "
-            f"tmux has-session -t {session_q} 2>/dev/null && {attach_existing} || {new_cmd}"
+            f"if tmux has-session -t {session_q} 2>/dev/null; "
+            f"then {attach_existing}; "
+            f"else {new_cmd}; "
+            f"fi"
         )
         return ("bash", "-lc", attach_or_create)
 
