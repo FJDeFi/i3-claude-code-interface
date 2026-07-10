@@ -202,7 +202,8 @@ def test_create_claudecode_session_hides_tmux_status(monkeypatch, client):
 
     assert response.status_code == 200
     assert commands == [
-        "tmux new -d -s demo && (tmux set-option -t demo status off 2>/dev/null || true)"
+        "tmux new -d -s demo",
+        "tmux set-option -t demo status off",
     ]
 
 
