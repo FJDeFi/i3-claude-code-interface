@@ -1,6 +1,10 @@
 const statusDotEl = document.querySelector('#status-dot');
 const serverStatusEl = document.querySelector('#server-status');
 const terminalWrapEl = document.querySelector('#terminal-wrap');
+const terminalAuthLinkEl = document.querySelector('#terminal-auth-link');
+const terminalAuthLinkUrlEl = document.querySelector('#terminal-auth-link-url');
+const terminalAuthLinkCopyEl = document.querySelector('#terminal-auth-link-copy');
+const terminalAuthLinkOpenEl = document.querySelector('#terminal-auth-link-open');
 const connectionToggleBtn = document.querySelector('#connection-toggle-btn');
 const tokenManagementPanelEl = document.querySelector('#token-management-panel');
 const tokenStatusEl = document.querySelector('#token-status');
@@ -57,6 +61,9 @@ let tokenSessionsModalSelected = [];
 let apiKeyModalAfterSave = null;
 let apiKeyModalDismissed = false;
 let currentCollabState = null;
+let terminalOutputBuffer = '';
+let currentClaudeAuthLink = '';
+const terminalOutputDecoder = new TextDecoder();
 const CLAUDE_API_KEY_STORAGE_KEY = 'i3ClaudeCodeApiKey';
 
 const session = window.__CLAUDE_CODE_SESSION__ || {};
@@ -242,6 +249,22 @@ function ensureTerm() {
   fitAddon = new FitCtor();
   term.loadAddon(fitAddon);
   term.open(terminalWrapEl);
+  term.parser?.registerOscHandler?.(52, (data) => {
+    const marker = data.indexOf(';');
+    if (marker === -1) return false;
+    const encoded = data.slice(marker + 1);
+    if (!encoded) return false;
+    try {
+      const copiedText = decodeBase64Utf8(encoded);
+      if (copiedText.includes('platform.claude.com/oauth/authorize')) {
+        showClaudeAuthLink(copiedText.trim());
+      }
+      void writeTextToClipboard(copiedText);
+      return true;
+    } catch {
+      return false;
+    }
+  });
   term.onData((data) => {
     if (!currentCollabState?.isController) return;
     if (socket?.readyState === WebSocket.OPEN) {
@@ -286,11 +309,46 @@ function disconnect() {
   setConnectionStatus('offline', 'Disconnected');
 }
 
+function stripTerminalControlSequences(text) {
+  return text
+    .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, '')
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
+function showClaudeAuthLink(link) {
+  currentClaudeAuthLink = link;
+  if (terminalAuthLinkUrlEl) terminalAuthLinkUrlEl.textContent = link;
+  terminalAuthLinkEl?.classList.remove('hidden');
+}
+
+function hideClaudeAuthLink() {
+  currentClaudeAuthLink = '';
+  terminalAuthLinkEl?.classList.add('hidden');
+  if (terminalAuthLinkUrlEl) terminalAuthLinkUrlEl.textContent = '';
+}
+
+function detectClaudeAuthLink(text) {
+  const cleaned = stripTerminalControlSequences(text);
+  terminalOutputBuffer = `${terminalOutputBuffer}${cleaned}`.slice(-12000);
+  const match = terminalOutputBuffer.match(/https:\/\/platform\.claude\.com\/oauth\/authorize\?[^\s"'<>]+/);
+  if (!match) return;
+  const link = match[0].replace(/[),.;]+$/, '');
+  if (link && link !== currentClaudeAuthLink) showClaudeAuthLink(link);
+}
+
+function decodeBase64Utf8(value) {
+  const binary = atob(value);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
 async function connect() {
   clearReconnectTimer();
   disconnect();
   ensureTerm();
   term.reset();
+  terminalOutputBuffer = '';
+  hideClaudeAuthLink();
 
   const selected = getSelectedSession();
   if (!selected) {
@@ -346,6 +404,7 @@ async function connect() {
       return;
     }
     const view = new Uint8Array(event.data);
+    detectClaudeAuthLink(terminalOutputDecoder.decode(view, { stream: true }));
     term.write(view);
   };
 
@@ -641,6 +700,21 @@ async function copyToken(token) {
     setTokenStatus('Could not copy the shareable link. Please copy it manually.', 'is-error');
   }
 }
+
+terminalAuthLinkCopyEl?.addEventListener('click', async () => {
+  if (!currentClaudeAuthLink) return;
+  try {
+    await writeTextToClipboard(currentClaudeAuthLink);
+    setTokenStatus('Claude sign-in link copied.', 'is-success');
+  } catch {
+    setTokenStatus('Could not copy Claude sign-in link. Select the link text manually.', 'is-error');
+  }
+});
+
+terminalAuthLinkOpenEl?.addEventListener('click', () => {
+  if (!currentClaudeAuthLink) return;
+  window.open(currentClaudeAuthLink, '_blank', 'noopener,noreferrer');
+});
 
 function getShareableTokenLink(token) {
   const basePath = window.location.pathname.startsWith('/claudecode') ? '/claudecode/' : '/';

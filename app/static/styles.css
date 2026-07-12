@@ -755,6 +755,44 @@ code {
   transform: none;
 }
 
+.terminal-auth-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(19, 180, 127, 0.28);
+  border-radius: 14px;
+  background: rgba(235, 255, 247, 0.86);
+}
+
+.terminal-auth-link.hidden {
+  display: none;
+}
+
+.terminal-auth-link__label {
+  margin: 0 0 2px;
+  color: #08785a;
+  font-weight: 800;
+}
+
+.terminal-auth-link__url {
+  max-width: min(920px, 62vw);
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-auth-link__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
 .terminal-wrap {
   position: relative;
   flex: 1;
