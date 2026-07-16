@@ -34,6 +34,13 @@ const requestControlBtnEl = document.querySelector('#request-control-btn');
 const transferControlSelectEl = document.querySelector('#transfer-control-select');
 const transferControlBtnEl = document.querySelector('#transfer-control-btn');
 const collabRequestsEl = document.querySelector('#collab-requests');
+const previewPanelEl = document.querySelector('#preview-panel');
+const previewFrameEl = document.querySelector('#preview-frame');
+const previewStatusEl = document.querySelector('#preview-status');
+const previewPortInputEl = document.querySelector('#preview-port-input');
+const previewToggleBtnEl = document.querySelector('#preview-toggle-btn');
+const previewOpenBtnEl = document.querySelector('#preview-open-btn');
+const previewCloseBtnEl = document.querySelector('#preview-close-btn');
 const apiKeyModalEl = document.querySelector('#api-key-modal');
 const apiKeyModalFormEl = document.querySelector('#api-key-modal-form');
 const apiKeyModalInputEl = document.querySelector('#api-key-modal-input');
@@ -221,6 +228,49 @@ function apiPath(path) {
   if (path.startsWith(basePath + '/')) return path;
   if (path.startsWith('/')) return `${basePath}${path}`;
   return `${basePath}/${path}`;
+}
+
+function getPreviewPort() {
+  const port = Number.parseInt(previewPortInputEl?.value || '5173', 10);
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) return null;
+  return port;
+}
+
+function previewPathForPort(port) {
+  const path = apiPath(`/preview/${String(port)}/`);
+  if (!sessionToken) return path;
+  const url = new URL(path, window.location.origin);
+  url.searchParams.set('claudecodeToken', sessionToken);
+  return `${url.pathname}${url.search}`;
+}
+
+function openPreviewPanel() {
+  const port = getPreviewPort();
+  if (!port) {
+    setTokenStatus('Enter a preview port between 1024 and 65535.', 'is-error');
+    return;
+  }
+  const previewPath = previewPathForPort(port);
+  if (previewFrameEl) previewFrameEl.src = previewPath;
+  if (previewStatusEl) {
+    previewStatusEl.textContent = `Previewing localhost:${String(port)} from this VM.`;
+  }
+  previewPanelEl?.classList.remove('hidden');
+  setTokenStatus(`Preview opened for localhost:${String(port)}.`, 'is-success');
+}
+
+function closePreviewPanel() {
+  previewPanelEl?.classList.add('hidden');
+  if (previewFrameEl) previewFrameEl.src = 'about:blank';
+}
+
+function openPreviewInNewTab() {
+  const port = getPreviewPort();
+  if (!port) {
+    setTokenStatus('Enter a preview port between 1024 and 65535.', 'is-error');
+    return;
+  }
+  window.open(previewPathForPort(port), '_blank', 'noopener,noreferrer');
 }
 
 renderAccountSummary();
@@ -1347,6 +1397,18 @@ requestControlBtnEl?.addEventListener('click', () => {
 
 transferControlBtnEl?.addEventListener('click', () => {
   void transferControl();
+});
+
+previewToggleBtnEl?.addEventListener('click', () => {
+  openPreviewPanel();
+});
+
+previewOpenBtnEl?.addEventListener('click', () => {
+  openPreviewInNewTab();
+});
+
+previewCloseBtnEl?.addEventListener('click', () => {
+  closePreviewPanel();
 });
 
 setConnectionButton('connect');

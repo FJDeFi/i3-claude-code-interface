@@ -43,6 +43,11 @@
                 <option value="__create__">Create a new session</option>
               </select>
             </div>
+            <div class="preview-picker">
+              <span class="preview-picker__label">Preview port</span>
+              <input id="preview-port-input" type="number" min="1024" max="65535" value="5173" />
+              <button class="ghost-button" id="preview-toggle-btn" type="button">Preview</button>
+            </div>
             <button class="primary-button" id="connection-toggle-btn" type="button">Connect</button>
           </div>
         </header>
@@ -74,6 +79,20 @@
           </div>
         </div>
         <div class="terminal-wrap" id="terminal-wrap"></div>
+      </section>
+
+      <section class="panel preview-panel hidden" id="preview-panel">
+        <header class="panel-header">
+          <div>
+            <h2>Website Preview</h2>
+            <p id="preview-status">Start a local dev server, then open the preview.</p>
+          </div>
+          <div class="panel-buttons">
+            <button class="ghost-button" id="preview-open-btn" type="button">Open in new tab</button>
+            <button class="ghost-button" id="preview-close-btn" type="button">Close</button>
+          </div>
+        </header>
+        <iframe id="preview-frame" title="Website preview"></iframe>
       </section>
 
       <section class="panel token-panel hidden" id="token-management-panel">
@@ -133,7 +152,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="static/app.js?v=20260712-auth-link-copy" defer></script>
+    <script src="static/app.js?v=20260716-preview-button" defer></script>
     <div class="modal hidden" id="session-modal" role="dialog" aria-modal="true">
       <div class="modal__content">
         <header class="modal__header">

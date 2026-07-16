@@ -109,6 +109,26 @@ def test_ws_terminal_plain_get_is_upgrade_required(client):
     assert "WebSocket" in response.json()["detail"]
 
 
+def test_preview_requires_valid_session(client):
+    response = client.get("/preview/5173/")
+    assert response.status_code == 403
+
+
+def test_preview_rejects_unsafe_port(monkeypatch, client):
+    async def fake_validate_token(token):
+        return {
+            "token": token,
+            "role": "owner",
+            "status": "active",
+            "accessType": "editor",
+        }
+
+    monkeypatch.setattr("app.main.validate_token", fake_validate_token)
+    response = client.get("/preview/80/", headers={"X-Claude-Code-Token": "owner-token"})
+    assert response.status_code == 400
+    assert "port" in response.json()["detail"].lower()
+
+
 def test_tokens_api_requires_privileged_token(client):
     response = client.get("/api/tokens")
     assert response.status_code == 403
