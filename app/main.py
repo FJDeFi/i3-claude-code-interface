@@ -8,8 +8,9 @@ import json
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from fastapi import FastAPI, Header, Request, WebSocket
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .collab import (
@@ -542,6 +543,10 @@ def _safe_session_name(name: str) -> bool:
     return bool(re.match(r'^[A-Za-z0-9_\-]+$', name))
 
 
+def _safe_preview_port(port: int) -> bool:
+    return 1024 <= port <= 65535
+
+
 def _run_cmd(cmd: str) -> tuple[int, str, str]:
     try:
         completed = subprocess.run(shlex.split(cmd), capture_output=True, text=True, check=False)
@@ -580,6 +585,60 @@ async def list_claudecode_sessions(request: Request) -> JSONResponse:
             sessions = [s for s in sessions if s in allowed_set]
 
     return JSONResponse({"sessions": sessions})
+
+
+@app.api_route("/preview/{port}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+@app.api_route("/preview/{port}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+async def preview_local_site(port: int, request: Request, path: str = "") -> Response:
+    session = await _resolve_session(request)
+    if not session:
+        return JSONResponse(status_code=403, content={"detail": "Valid session access required"})
+    if not _safe_preview_port(port):
+        return JSONResponse(status_code=400, content={"detail": "Preview port must be between 1024 and 65535"})
+
+    target_path = "/" + path.lstrip("/")
+    target_url = httpx.URL(
+        f"http://127.0.0.1:{port}{target_path}",
+        query=request.url.query.encode("utf-8"),
+    )
+    body = await request.body()
+    headers = {
+        key: value
+        for key, value in request.headers.items()
+        if key.lower() not in {"host", "connection", "content-length", "accept-encoding"}
+    }
+    try:
+        async with httpx.AsyncClient(follow_redirects=False, timeout=20.0) as client:
+            upstream = await client.request(
+                request.method,
+                target_url,
+                content=body,
+                headers=headers,
+            )
+    except httpx.RequestError:
+        return JSONResponse(
+            status_code=502,
+            content={"detail": f"No preview server is responding on localhost:{port}"},
+        )
+
+    excluded_headers = {
+        "content-encoding",
+        "content-length",
+        "connection",
+        "transfer-encoding",
+        "keep-alive",
+    }
+    response_headers = {
+        key: value
+        for key, value in upstream.headers.items()
+        if key.lower() not in excluded_headers
+    }
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        headers=response_headers,
+        media_type=upstream.headers.get("content-type"),
+    )
 
 
 @app.post("/api/claudecode/sessions")
