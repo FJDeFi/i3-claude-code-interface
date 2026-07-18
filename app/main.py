@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import json
 from pathlib import Path
 from typing import Optional
@@ -229,6 +227,7 @@ async def _send_viewer_stream(
     *,
     tmux_session: str,
     session: dict,
+    start,
 ) -> None:
     actor_id = _session_actor_id(session)
     terminal_hub.add_participant(
@@ -238,47 +237,18 @@ async def _send_viewer_stream(
         role="viewer",
         websocket=websocket,
     )
-    queue = terminal_hub.subscribe(tmux_session)
     payload = await _collab_payload(tmux_session, session)
     if payload:
         await websocket.send_text(json.dumps({"type": "collab", "state": payload}))
-
-    async def pump_out() -> None:
-        while True:
-            chunk = await queue.get()
-            await websocket.send_bytes(chunk)
-
-    async def pump_in() -> None:
-        while True:
-            message = await websocket.receive()
-            if message.get("type") == "websocket.disconnect":
-                return
-
-    out_task = asyncio.create_task(pump_out())
-    in_task = asyncio.create_task(pump_in())
     try:
-        done, pending = await asyncio.wait(
-            {out_task, in_task},
-            return_when=asyncio.FIRST_COMPLETED,
+        await run_terminal_bridge(
+            websocket,
+            start=start,
+            accept=False,
+            read_only=True,
         )
-        for task in pending:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-        for task in done:
-            if task.cancelled():
-                continue
-            exc = task.exception()
-            if exc is not None:
-                raise exc
     finally:
-        terminal_hub.unsubscribe(tmux_session, queue)
         terminal_hub.remove_participant(tmux_session, actor_id)
-        for task in (out_task, in_task):
-            if not task.done():
-                task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await task
 
 
 @app.get("/", include_in_schema=False)
@@ -420,7 +390,12 @@ async def terminal_socket(websocket: WebSocket) -> None:
     actor_id = _session_actor_id(session)
     is_controller = actor_id == state.get("controllerId")
     if not is_controller:
-        await _send_viewer_stream(websocket, tmux_session=tmux_session, session=session)
+        await _send_viewer_stream(
+            websocket,
+            tmux_session=tmux_session,
+            session=session,
+            start=start,
+        )
         return
 
     role = "master-controller" if actor_id == state.get("masterId") else "controller"

@@ -407,3 +407,51 @@ def test_terminal_websocket_accepts_firebase_web_session(monkeypatch):
             ws.send_text(json.dumps({"type": "start", "session": "demo"}))
             assert json.loads(ws.receive_text())["type"] == "collab"
             assert json.loads(ws.receive_text())["type"] == "ready"
+
+
+def test_terminal_websocket_guest_attaches_read_only(monkeypatch):
+    bridge_calls = []
+
+    async def fake_bridge(websocket, **kwargs):
+        bridge_calls.append(kwargs)
+        await websocket.send_text(json.dumps({"type": "ready"}))
+        await websocket.close()
+
+    async def fake_validate_token(token):
+        return {
+            "token": token,
+            "role": "guest",
+            "status": "active",
+            "accessType": "viewer",
+            "session": "demo",
+        }
+
+    async def fake_ensure_collab(tmux_session, session):
+        return {
+            "masterId": "token:owner-token",
+            "controllerId": "token:owner-token",
+        }
+
+    async def fake_collab_payload(tmux_session, session):
+        return {
+            "session": tmux_session,
+            "actorId": "token:guest-token",
+            "isMaster": False,
+            "isController": False,
+            "collabRole": "viewer",
+        }
+
+    monkeypatch.setattr("app.main.validate_token", fake_validate_token)
+    monkeypatch.setattr("app.main.run_terminal_bridge", fake_bridge)
+    monkeypatch.setattr("app.main._ensure_collab_for_privileged", fake_ensure_collab)
+    monkeypatch.setattr("app.main._collab_payload", fake_collab_payload)
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/terminal?claudecodeToken=guest-token") as ws:
+            ws.send_text(json.dumps({"type": "start", "session": "demo"}))
+            assert json.loads(ws.receive_text())["type"] == "collab"
+            assert json.loads(ws.receive_text())["type"] == "ready"
+
+    assert bridge_calls
+    assert bridge_calls[0]["read_only"] is True
+    assert bridge_calls[0]["accept"] is False
