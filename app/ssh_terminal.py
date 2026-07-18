@@ -88,6 +88,7 @@ def build_remote_command_argv(
     api_key: Optional[str] = None,
     tmux_session: Optional[str] = None,
     root_dir: Optional[str] = None,
+    read_only: bool = False,
 ) -> Tuple[str, ...]:
     """Return argv for the remote process (executed under a PTY).
 
@@ -105,6 +106,13 @@ def build_remote_command_argv(
     if tmux_session:
         session_q = shlex.quote(tmux_session)
         root_q = shlex.quote(root_dir) if root_dir else ""
+        if read_only:
+            attach_read_only = (
+                f"tmux set-option -t {session_q} status off 2>/dev/null || true; "
+                f"exec tmux attach -r -t {session_q}"
+            )
+            return ("bash", "-lc", attach_read_only)
+
         tmux_create_prefix = f"tmux new-session -d -s {session_q} {f'-c {root_q} ' if root_dir else ''}"
 
         if remote_cmd:
@@ -212,6 +220,7 @@ async def run_terminal_bridge(
     start: Optional["StartPayload"] = None,
     output_callback: Optional[OutputCallback] = None,
     accept: bool = True,
+    read_only: bool = False,
 ) -> None:
     if accept:
         await websocket.accept()
@@ -233,6 +242,7 @@ async def run_terminal_bridge(
             tmux_session,
             root_dir,
             output_callback=output_callback,
+            read_only=read_only,
         )
         return
 
@@ -268,7 +278,12 @@ async def run_terminal_bridge(
         await websocket.close(code=4401)
         return
 
-    argv = build_remote_command_argv(api_key, tmux_session=tmux_session, root_dir=root_dir)
+    argv = build_remote_command_argv(
+        api_key,
+        tmux_session=tmux_session,
+        root_dir=root_dir,
+        read_only=read_only,
+    )
     remote_exec = argv_to_remote_exec_string(argv)
     logger.info(
         "ssh remote command tmux_session=%s root_dir=%s argv=%s",
@@ -292,6 +307,7 @@ async def run_terminal_bridge(
                 cols,
                 rows,
                 output_callback=output_callback,
+                read_only=read_only,
             )
     except WebSocketDisconnect:
         pass
@@ -313,9 +329,15 @@ async def _run_local_terminal_bridge(
     root_dir: Optional[str],
     *,
     output_callback: Optional[OutputCallback] = None,
+    read_only: bool = False,
 ) -> None:
     cols, rows = _default_term_size()
-    argv = build_remote_command_argv(api_key, tmux_session=tmux_session, root_dir=root_dir)
+    argv = build_remote_command_argv(
+        api_key,
+        tmux_session=tmux_session,
+        root_dir=root_dir,
+        read_only=read_only,
+    )
     logger.info(
         "local terminal command tmux_session=%s root_dir=%s argv=%s",
         tmux_session or "",
@@ -329,6 +351,7 @@ async def _run_local_terminal_bridge(
             cols,
             rows,
             output_callback=output_callback,
+            read_only=read_only,
         )
     except WebSocketDisconnect:
         pass
@@ -347,6 +370,7 @@ async def _local_pty_bridge(
     rows: int,
     *,
     output_callback: Optional[OutputCallback] = None,
+    read_only: bool = False,
 ) -> None:
     master_fd, slave_fd = pty.openpty()
     _set_pty_size(slave_fd, cols, rows)
@@ -387,6 +411,8 @@ async def _local_pty_bridge(
             mtype = message.get("type")
             if mtype == "websocket.disconnect":
                 return
+            if read_only:
+                continue
             if mtype != "websocket.receive":
                 continue
             if "bytes" in message and message["bytes"] is not None:
@@ -495,6 +521,7 @@ async def _bridge_loop(
     rows: int,
     *,
     output_callback: Optional[OutputCallback] = None,
+    read_only: bool = False,
 ) -> None:
     current_cols, current_rows = cols, rows
 
@@ -515,6 +542,8 @@ async def _bridge_loop(
             mtype = message.get("type")
             if mtype == "websocket.disconnect":
                 return
+            if read_only:
+                continue
             if mtype != "websocket.receive":
                 continue
             if "bytes" in message and message["bytes"] is not None:

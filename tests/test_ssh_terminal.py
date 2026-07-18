@@ -117,6 +117,24 @@ def test_build_remote_command_tmux_creates_detached_without_status(monkeypatch):
     assert "if tmux has-session -t demo" in inner
 
 
+def test_build_remote_command_tmux_read_only_attach(monkeypatch):
+    monkeypatch.delenv("SSH_REMOTE_COMMAND", raising=False)
+    monkeypatch.delenv("OPENCLAW_ENV_FILE", raising=False)
+    monkeypatch.setenv("CLAUDE_CODE_CMD", "claude")
+    argv = ssh_terminal.build_remote_command_argv(
+        "sk-ant-session-secret",
+        tmux_session="demo",
+        root_dir="/workspace",
+        read_only=True,
+    )
+
+    assert argv[0] == "bash" and argv[1] == "-lc"
+    inner = argv[2]
+    assert "tmux attach -r -t demo" in inner
+    assert "tmux new-session" not in inner
+    assert "ANTHROPIC_API_KEY" not in inner
+
+
 def test_build_remote_command_custom_remote(monkeypatch):
     monkeypatch.setenv("SSH_REMOTE_COMMAND", "vim")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
