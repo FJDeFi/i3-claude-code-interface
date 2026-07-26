@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 import pytest
@@ -409,8 +410,31 @@ def test_terminal_websocket_accepts_firebase_web_session(monkeypatch):
             assert json.loads(ws.receive_text())["type"] == "ready"
 
 
-def test_terminal_websocket_guest_attaches_read_only(monkeypatch):
+def test_terminal_websocket_guest_uses_mirrored_output(monkeypatch):
     bridge_calls = []
+    hub_calls = []
+
+    class FakeHub:
+        def add_participant(self, session_name, *, actor_id, label, role, websocket=None):
+            hub_calls.append(("add", session_name, actor_id, role))
+
+        def remove_participant(self, session_name, actor_id):
+            hub_calls.append(("remove", session_name, actor_id))
+
+        def participants(self, session_name):
+            return []
+
+        def terminal_size(self, session_name):
+            return {"cols": 120, "rows": 36}
+
+        def subscribe(self, session_name):
+            queue = asyncio.Queue()
+            queue.put_nowait({"type": "terminal-size", "cols": 120, "rows": 36})
+            queue.put_nowait(b"mirrored output")
+            return queue
+
+        def unsubscribe(self, session_name, queue):
+            hub_calls.append(("unsubscribe", session_name))
 
     async def fake_bridge(websocket, **kwargs):
         bridge_calls.append(kwargs)
@@ -443,6 +467,7 @@ def test_terminal_websocket_guest_attaches_read_only(monkeypatch):
 
     monkeypatch.setattr("app.main.validate_token", fake_validate_token)
     monkeypatch.setattr("app.main.run_terminal_bridge", fake_bridge)
+    monkeypatch.setattr("app.main.terminal_hub", FakeHub())
     monkeypatch.setattr("app.main._ensure_collab_for_privileged", fake_ensure_collab)
     monkeypatch.setattr("app.main._collab_payload", fake_collab_payload)
 
@@ -450,8 +475,8 @@ def test_terminal_websocket_guest_attaches_read_only(monkeypatch):
         with client.websocket_connect("/ws/terminal?claudecodeToken=guest-token") as ws:
             ws.send_text(json.dumps({"type": "start", "session": "demo"}))
             assert json.loads(ws.receive_text())["type"] == "collab"
-            assert json.loads(ws.receive_text())["type"] == "ready"
+            assert json.loads(ws.receive_text())["type"] == "terminal-size"
+            assert ws.receive_bytes() == b"mirrored output"
 
-    assert bridge_calls
-    assert bridge_calls[0]["read_only"] is True
-    assert bridge_calls[0]["accept"] is False
+    assert bridge_calls == []
+    assert ("add", "demo", "token:guest-token", "viewer") in hub_calls

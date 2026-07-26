@@ -151,6 +151,67 @@ def test_try_parse_resize():
     )
 
 
+def test_try_parse_tmux_scroll():
+    assert ssh_terminal._try_parse_tmux_scroll("not json") is None
+    assert ssh_terminal._try_parse_tmux_scroll('{"type":"resize","cols":100,"rows":30}') is None
+    assert ssh_terminal._try_parse_tmux_scroll('{"type":"tmux-scroll","direction":"left"}') is None
+    assert ssh_terminal._try_parse_tmux_scroll('{"type":"tmux-scroll","direction":"up","lines":4}') == (
+        "up",
+        4,
+    )
+    assert ssh_terminal._try_parse_tmux_scroll('{"type":"tmux-scroll","direction":"down","lines":999}') == (
+        "down",
+        50,
+    )
+
+
+def test_try_parse_tmux_copy_mode_cancel():
+    assert ssh_terminal._try_parse_tmux_copy_mode_cancel("not json") is False
+    assert ssh_terminal._try_parse_tmux_copy_mode_cancel('{"type":"tmux-scroll","direction":"up"}') is False
+    assert ssh_terminal._try_parse_tmux_copy_mode_cancel('{"type":"tmux-copy-mode","action":"cancel"}') is True
+
+
+def test_scroll_tmux_session_uses_copy_mode(monkeypatch):
+    calls = []
+
+    class FakeProc:
+        async def wait(self):
+            return 0
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        calls.append(args)
+        return FakeProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    asyncio.run(ssh_terminal._scroll_tmux_session("demo", "up", 5))
+
+    assert calls == [
+        ("tmux", "copy-mode", "-t", "demo"),
+        ("tmux", "send-keys", "-t", "demo", "-N", "5", "-X", "scroll-up"),
+    ]
+
+
+def test_cancel_tmux_copy_mode(monkeypatch):
+    calls = []
+
+    class FakeProc:
+        async def wait(self):
+            return 0
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        calls.append(args)
+        return FakeProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+
+    asyncio.run(ssh_terminal._cancel_tmux_copy_mode("demo"))
+
+    assert calls == [
+        ("tmux", "send-keys", "-t", "demo", "-X", "cancel"),
+    ]
+
+
 def test_receive_start_api_key_without_key_returns_none():
     class FakeWebSocket:
         def __init__(self):
