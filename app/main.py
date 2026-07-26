@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Optional
@@ -10,6 +11,7 @@ import httpx
 from fastapi import FastAPI, Header, Request, WebSocket
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.websockets import WebSocketDisconnect
 
 from .collab import (
     approve_control_request,
@@ -227,7 +229,6 @@ async def _send_viewer_stream(
     *,
     tmux_session: str,
     session: dict,
-    start,
 ) -> None:
     actor_id = _session_actor_id(session)
     terminal_hub.add_participant(
@@ -240,14 +241,43 @@ async def _send_viewer_stream(
     payload = await _collab_payload(tmux_session, session)
     if payload:
         await websocket.send_text(json.dumps({"type": "collab", "state": payload}))
+    queue = terminal_hub.subscribe(tmux_session)
+
+    async def pump_out() -> None:
+        while True:
+            event = await queue.get()
+            if isinstance(event, bytes):
+                await websocket.send_bytes(event)
+            else:
+                await websocket.send_text(json.dumps(event))
+
+    async def pump_in() -> None:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                return
+
+    out_task = asyncio.create_task(pump_out())
+    in_task = asyncio.create_task(pump_in())
     try:
-        await run_terminal_bridge(
-            websocket,
-            start=start,
-            accept=False,
-            read_only=True,
+        done, pending = await asyncio.wait(
+            {out_task, in_task},
+            return_when=asyncio.FIRST_COMPLETED,
         )
+        for task in pending:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        for task in done:
+            if task.cancelled():
+                continue
+            exc = task.exception()
+            if exc is not None and not isinstance(exc, WebSocketDisconnect):
+                raise exc
     finally:
+        terminal_hub.unsubscribe(tmux_session, queue)
         terminal_hub.remove_participant(tmux_session, actor_id)
 
 
@@ -394,7 +424,6 @@ async def terminal_socket(websocket: WebSocket) -> None:
             websocket,
             tmux_session=tmux_session,
             session=session,
-            start=start,
         )
         return
 
@@ -415,6 +444,7 @@ async def terminal_socket(websocket: WebSocket) -> None:
             start=start,
             accept=False,
             output_callback=lambda chunk: terminal_hub.broadcast(tmux_session, chunk),
+            resize_callback=lambda cols, rows: terminal_hub.set_terminal_size(tmux_session, cols, rows),
         )
     finally:
         terminal_hub.remove_participant(tmux_session, actor_id)

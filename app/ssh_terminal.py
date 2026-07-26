@@ -15,6 +15,7 @@ import os
 import pty
 import shlex
 import signal
+import subprocess
 import struct
 import termios
 from dataclasses import dataclass
@@ -32,6 +33,7 @@ logger = setup_logger("claude_code.ssh")
 START_MESSAGE_TIMEOUT_SECONDS = 3.0
 OPENCLAW_ENV_FILE = Path("/etc/openclaw.env")
 OutputCallback = Callable[[bytes], Awaitable[None]]
+ResizeCallback = Callable[[int, int], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -219,6 +221,7 @@ async def run_terminal_bridge(
     *,
     start: Optional["StartPayload"] = None,
     output_callback: Optional[OutputCallback] = None,
+    resize_callback: Optional[ResizeCallback] = None,
     accept: bool = True,
     read_only: bool = False,
 ) -> None:
@@ -242,6 +245,7 @@ async def run_terminal_bridge(
             tmux_session,
             root_dir,
             output_callback=output_callback,
+            resize_callback=resize_callback,
             read_only=read_only,
         )
         return
@@ -263,6 +267,8 @@ async def run_terminal_bridge(
         "present" if api_key else "missing",
     )
     cols, rows = _default_term_size()
+    if resize_callback is not None:
+        await resize_callback(cols, rows)
     try:
         conn = await asyncssh.connect(
             cfg.host,
@@ -307,6 +313,7 @@ async def run_terminal_bridge(
                 cols,
                 rows,
                 output_callback=output_callback,
+                resize_callback=resize_callback,
                 read_only=read_only,
             )
     except WebSocketDisconnect:
@@ -329,9 +336,12 @@ async def _run_local_terminal_bridge(
     root_dir: Optional[str],
     *,
     output_callback: Optional[OutputCallback] = None,
+    resize_callback: Optional[ResizeCallback] = None,
     read_only: bool = False,
 ) -> None:
     cols, rows = _default_term_size()
+    if resize_callback is not None:
+        await resize_callback(cols, rows)
     argv = build_remote_command_argv(
         api_key,
         tmux_session=tmux_session,
@@ -350,7 +360,9 @@ async def _run_local_terminal_bridge(
             argv,
             cols,
             rows,
+            tmux_session=tmux_session,
             output_callback=output_callback,
+            resize_callback=resize_callback,
             read_only=read_only,
         )
     except WebSocketDisconnect:
@@ -369,7 +381,9 @@ async def _local_pty_bridge(
     cols: int,
     rows: int,
     *,
+    tmux_session: Optional[str] = None,
     output_callback: Optional[OutputCallback] = None,
+    resize_callback: Optional[ResizeCallback] = None,
     read_only: bool = False,
 ) -> None:
     master_fd, slave_fd = pty.openpty()
@@ -411,17 +425,30 @@ async def _local_pty_bridge(
             mtype = message.get("type")
             if mtype == "websocket.disconnect":
                 return
-            if read_only:
-                continue
             if mtype != "websocket.receive":
+                continue
+
+            if "text" in message and message["text"] is not None:
+                if _try_parse_tmux_copy_mode_cancel(message["text"]) and tmux_session:
+                    await _cancel_tmux_copy_mode(tmux_session)
+                    continue
+                scroll = _try_parse_tmux_scroll(message["text"])
+                if scroll and tmux_session:
+                    direction, lines = scroll
+                    await _scroll_tmux_session(tmux_session, direction, lines)
+                    continue
+                resized = _try_parse_resize(message["text"])
+                if resized and not read_only:
+                    new_cols, new_rows = resized
+                    _set_pty_size(master_fd, new_cols, new_rows)
+                    if resize_callback is not None:
+                        await resize_callback(new_cols, new_rows)
+                    continue
+
+            if read_only:
                 continue
             if "bytes" in message and message["bytes"] is not None:
                 os.write(master_fd, message["bytes"])
-            elif "text" in message and message["text"] is not None:
-                resized = _try_parse_resize(message["text"])
-                if resized:
-                    new_cols, new_rows = resized
-                    _set_pty_size(master_fd, new_cols, new_rows)
 
     out_task = asyncio.create_task(pump_out())
     in_task = asyncio.create_task(pump_in())
@@ -521,6 +548,7 @@ async def _bridge_loop(
     rows: int,
     *,
     output_callback: Optional[OutputCallback] = None,
+    resize_callback: Optional[ResizeCallback] = None,
     read_only: bool = False,
 ) -> None:
     current_cols, current_rows = cols, rows
@@ -556,6 +584,8 @@ async def _bridge_loop(
                     process.change_terminal_size(
                         current_cols, current_rows, 0, 0
                     )
+                    if resize_callback is not None:
+                        await resize_callback(current_cols, current_rows)
 
     out_task = asyncio.create_task(pump_out())
     in_task = asyncio.create_task(pump_in())
@@ -600,3 +630,58 @@ def _try_parse_resize(text: str) -> Optional[Tuple[int, int]]:
     except (KeyError, TypeError, ValueError):
         return None
     return max(20, min(cols, 500)), max(5, min(rows, 200))
+
+
+def _try_parse_tmux_scroll(text: str) -> Optional[Tuple[str, int]]:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if payload.get("type") != "tmux-scroll":
+        return None
+    direction = payload.get("direction")
+    if direction not in {"up", "down"}:
+        return None
+    try:
+        lines = int(payload.get("lines", 3))
+    except (TypeError, ValueError):
+        lines = 3
+    return direction, max(1, min(lines, 50))
+
+
+def _try_parse_tmux_copy_mode_cancel(text: str) -> bool:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    return payload.get("type") == "tmux-copy-mode" and payload.get("action") == "cancel"
+
+
+async def _scroll_tmux_session(tmux_session: str, direction: str, lines: int) -> None:
+    action = "scroll-up" if direction == "up" else "scroll-down"
+
+    async def run_tmux(*args: str) -> None:
+        proc = await asyncio.create_subprocess_exec(
+            "tmux",
+            *args,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        await proc.wait()
+
+    await run_tmux("copy-mode", "-t", tmux_session)
+    await run_tmux("send-keys", "-t", tmux_session, "-N", str(lines), "-X", action)
+
+
+async def _cancel_tmux_copy_mode(tmux_session: str) -> None:
+    proc = await asyncio.create_subprocess_exec(
+        "tmux",
+        "send-keys",
+        "-t",
+        tmux_session,
+        "-X",
+        "cancel",
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    await proc.wait()

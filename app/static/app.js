@@ -70,8 +70,12 @@ let apiKeyModalDismissed = false;
 let currentCollabState = null;
 let terminalOutputBuffer = '';
 let currentClaudeAuthLink = '';
+let terminalTmuxCopyModeActive = false;
+let controllerTerminalSize = null;
 const terminalOutputDecoder = new TextDecoder();
 const CLAUDE_API_KEY_STORAGE_KEY = 'i3ClaudeCodeApiKey';
+const TERMINAL_WHEEL_LINE_HEIGHT = 32;
+const TERMINAL_WHEEL_MAX_LINES = 12;
 
 const session = window.__CLAUDE_CODE_SESSION__ || {};
 const sessionToken = getCurrentToken();
@@ -318,9 +322,36 @@ function ensureTerm() {
   term.onData((data) => {
     if (!currentCollabState?.isController) return;
     if (socket?.readyState === WebSocket.OPEN) {
+      if (terminalTmuxCopyModeActive) {
+        terminalTmuxCopyModeActive = false;
+        socket.send(JSON.stringify({ type: 'tmux-copy-mode', action: 'cancel' }));
+      }
       socket.send(new TextEncoder().encode(data));
     }
   });
+  terminalWrapEl?.addEventListener(
+    'wheel',
+    (event) => {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      if (!getSelectedSession()) return;
+      const delta = event.deltaY;
+      if (!delta) return;
+      event.preventDefault();
+      const lines = Math.max(
+        1,
+        Math.min(TERMINAL_WHEEL_MAX_LINES, Math.ceil(Math.abs(delta) / TERMINAL_WHEEL_LINE_HEIGHT))
+      );
+      terminalTmuxCopyModeActive = true;
+      socket.send(
+        JSON.stringify({
+          type: 'tmux-scroll',
+          direction: delta < 0 ? 'up' : 'down',
+          lines,
+        })
+      );
+    },
+    { passive: false }
+  );
   scheduleFit();
 }
 
@@ -328,6 +359,10 @@ function scheduleFit() {
   if (!term || fitFrame) return;
   fitFrame = requestAnimationFrame(() => {
     fitFrame = 0;
+    if (!currentCollabState?.isController && controllerTerminalSize) {
+      applyControllerTerminalSize();
+      return;
+    }
     try {
       fitAddon?.fit();
     } catch {
@@ -335,6 +370,16 @@ function scheduleFit() {
     }
     sendResize();
   });
+}
+
+function applyControllerTerminalSize() {
+  if (!term || !controllerTerminalSize) return;
+  if (term.cols === controllerTerminalSize.cols && term.rows === controllerTerminalSize.rows) return;
+  try {
+    term.resize(controllerTerminalSize.cols, controllerTerminalSize.rows);
+  } catch {
+    // ignore
+  }
 }
 
 function sendResize() {
@@ -397,6 +442,7 @@ async function connect() {
   disconnect();
   ensureTerm();
   term.reset();
+  controllerTerminalSize = null;
   terminalOutputBuffer = '';
   hideClaudeAuthLink();
 
@@ -445,8 +491,23 @@ async function connect() {
           setConnectionStatus('offline', msg.message);
         } else if (msg.type === 'collab' && msg.state) {
           currentCollabState = msg.state;
+          if (msg.state.isController) {
+            controllerTerminalSize = null;
+            scheduleFit();
+          } else {
+            applyControllerTerminalSize();
+          }
           renderCollabState(msg.state);
           setConnectionStatus(msg.state.isController ? 'online' : null, msg.state.isController ? 'Connected as controller' : 'Connected as viewer');
+        } else if (msg.type === 'terminal-size') {
+          const cols = Number(msg.cols);
+          const rows = Number(msg.rows);
+          if (Number.isFinite(cols) && Number.isFinite(rows)) {
+            controllerTerminalSize = { cols, rows };
+            if (!currentCollabState?.isController) {
+              applyControllerTerminalSize();
+            }
+          }
         }
       } catch {
         // ignore non-JSON text
