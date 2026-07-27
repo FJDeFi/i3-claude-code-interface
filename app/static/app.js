@@ -338,13 +338,13 @@ function ensureTerm() {
 }
 
 function handleTerminalWheel(event) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
-  if (!getSelectedSession()) return;
   const delta = event.deltaY;
   if (!delta) return;
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation?.();
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  if (!getSelectedSession()) return;
   const lines = Math.max(
     1,
     Math.min(TERMINAL_WHEEL_MAX_LINES, Math.ceil(Math.abs(delta) / TERMINAL_WHEEL_LINE_HEIGHT))
