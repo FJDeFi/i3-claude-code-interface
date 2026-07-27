@@ -238,6 +238,14 @@ code {
   min-height: 0;
 }
 
+.token-panel--collapsed {
+  padding-bottom: 16px;
+}
+
+.token-panel--collapsed .token-panel__content {
+  display: none;
+}
+
 .hidden {
   display: none !important;
 }
@@ -314,6 +322,8 @@ code {
   color: #241b13;
   font-size: 0.92rem;
   font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .collab-controls__actions {
@@ -909,11 +919,12 @@ body.embed .panel {
 }
 
 body.embed .terminal-panel {
-  height: min(60vh, 520px);
+  height: auto;
+  min-height: min(640px, calc(100vh - 28px));
 }
 
 body.embed .terminal-panel .terminal-wrap {
-  min-height: 0;
+  min-height: clamp(340px, 48vh, 560px);
 }
 
 body.embed .token-panel {
@@ -992,6 +1003,7 @@ body.embed .terminal-wrap {
   .panel-buttons--terminal {
     align-items: stretch;
     flex-wrap: wrap;
+    gap: 8px;
   }
 
   .session-picker,
@@ -1012,9 +1024,36 @@ body.embed .terminal-wrap {
   }
 
   .panel {
-    flex: 1;
+    flex: 0 0 auto;
     height: auto;
     min-height: 0;
+  }
+
+  .terminal-panel {
+    flex: 1 0 auto;
+    min-height: min(640px, calc(100vh - 24px));
+  }
+
+  .collab-controls {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 10px;
+  }
+
+  .collab-controls__summary {
+    align-items: flex-start;
+  }
+
+  .collab-controls__actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .collab-role-badge {
+    min-width: 0;
+    min-height: 30px;
+    padding: 0 10px;
   }
 
   .preview-panel {
@@ -1027,7 +1066,16 @@ body.embed .terminal-wrap {
 
   .terminal-wrap {
     flex: 1;
-    min-height: 0;
+    min-height: clamp(300px, 44vh, 520px);
+  }
+
+  .token-panel {
+    flex: 0 0 auto;
+  }
+
+  .token-panel--collapsed {
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
 }
 
@@ -1111,6 +1159,48 @@ body.embed .terminal-wrap {
   .panel-buttons {
     margin-left: auto;
     justify-content: flex-end;
+  }
+
+  .panel-buttons--terminal {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    width: 100%;
+  }
+
+  .session-picker,
+  .preview-picker {
+    grid-column: 1 / -1;
+    gap: 8px;
+  }
+
+  .session-picker__label,
+  .preview-picker__label {
+    min-width: 92px;
+  }
+
+  .collab-controls__summary {
+    gap: 8px;
+  }
+
+  .collab-controls__label {
+    display: none;
+  }
+
+  .collab-controls__status {
+    font-size: 0.82rem;
+    line-height: 1.25;
+  }
+
+  .collab-role-badge {
+    font-size: 0.72rem;
+  }
+
+  .terminal-panel {
+    min-height: min(590px, calc(100vh - 16px));
+  }
+
+  .terminal-wrap {
+    min-height: clamp(320px, 50vh, 520px);
   }
 
   .primary-button,
