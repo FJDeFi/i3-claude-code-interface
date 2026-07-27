@@ -34,6 +34,7 @@ START_MESSAGE_TIMEOUT_SECONDS = 3.0
 OPENCLAW_ENV_FILE = Path("/etc/openclaw.env")
 OutputCallback = Callable[[bytes], Awaitable[None]]
 ResizeCallback = Callable[[int, int], Awaitable[None]]
+ScrollCallback = Callable[[str, str, int], Awaitable[None]]
 
 
 @dataclass(frozen=True)
@@ -297,6 +298,21 @@ async def run_terminal_bridge(
         root_dir or "",
         " ".join(argv),
     )
+
+    async def scroll_remote_tmux_session(
+        session_name: str, direction: str, lines: int
+    ) -> None:
+        session_q = shlex.quote(session_name)
+        if direction == "cancel":
+            command = f"tmux send-keys -t {session_q} -X cancel >/dev/null 2>&1 || true"
+        else:
+            action = "scroll-up" if direction == "up" else "scroll-down"
+            command = (
+                f"tmux copy-mode -t {session_q} >/dev/null 2>&1 || true; "
+                f"tmux send-keys -t {session_q} -N {int(lines)} -X {action} >/dev/null 2>&1 || true"
+            )
+        await conn.run(command, check=False)
+
     try:
         async with conn.create_process(
             command=remote_exec,
@@ -314,6 +330,8 @@ async def run_terminal_bridge(
                 rows,
                 output_callback=output_callback,
                 resize_callback=resize_callback,
+                scroll_callback=scroll_remote_tmux_session if tmux_session else None,
+                tmux_session=tmux_session,
                 read_only=read_only,
             )
     except WebSocketDisconnect:
@@ -549,6 +567,8 @@ async def _bridge_loop(
     *,
     output_callback: Optional[OutputCallback] = None,
     resize_callback: Optional[ResizeCallback] = None,
+    scroll_callback: Optional[ScrollCallback] = None,
+    tmux_session: Optional[str] = None,
     read_only: bool = False,
 ) -> None:
     current_cols, current_rows = cols, rows
@@ -570,22 +590,33 @@ async def _bridge_loop(
             mtype = message.get("type")
             if mtype == "websocket.disconnect":
                 return
-            if read_only:
-                continue
             if mtype != "websocket.receive":
                 continue
-            if "bytes" in message and message["bytes"] is not None:
-                process.stdin.write(message["bytes"])
-                await process.stdin.drain()
-            elif "text" in message and message["text"] is not None:
+            if "text" in message and message["text"] is not None:
+                if _try_parse_tmux_copy_mode_cancel(message["text"]):
+                    if scroll_callback is not None and tmux_session:
+                        await scroll_callback(tmux_session, "cancel", 0)
+                    continue
+                scroll = _try_parse_tmux_scroll(message["text"])
+                if scroll:
+                    if scroll_callback is not None and tmux_session:
+                        direction, lines = scroll
+                        await scroll_callback(tmux_session, direction, lines)
+                    continue
                 resized = _try_parse_resize(message["text"])
-                if resized:
+                if resized and not read_only:
                     current_cols, current_rows = resized
                     process.change_terminal_size(
                         current_cols, current_rows, 0, 0
                     )
                     if resize_callback is not None:
                         await resize_callback(current_cols, current_rows)
+                    continue
+            if read_only:
+                continue
+            if "bytes" in message and message["bytes"] is not None:
+                process.stdin.write(message["bytes"])
+                await process.stdin.drain()
 
     out_task = asyncio.create_task(pump_out())
     in_task = asyncio.create_task(pump_in())
