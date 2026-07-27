@@ -329,30 +329,33 @@ function ensureTerm() {
       socket.send(new TextEncoder().encode(data));
     }
   });
-  terminalWrapEl?.addEventListener(
-    'wheel',
-    (event) => {
-      if (!socket || socket.readyState !== WebSocket.OPEN) return;
-      if (!getSelectedSession()) return;
-      const delta = event.deltaY;
-      if (!delta) return;
-      event.preventDefault();
-      const lines = Math.max(
-        1,
-        Math.min(TERMINAL_WHEEL_MAX_LINES, Math.ceil(Math.abs(delta) / TERMINAL_WHEEL_LINE_HEIGHT))
-      );
-      terminalTmuxCopyModeActive = true;
-      socket.send(
-        JSON.stringify({
-          type: 'tmux-scroll',
-          direction: delta < 0 ? 'up' : 'down',
-          lines,
-        })
-      );
-    },
-    { passive: false }
-  );
+  terminalWrapEl?.addEventListener('wheel', handleTerminalWheel, {
+    capture: true,
+    passive: false,
+  });
   scheduleFit();
+}
+
+function handleTerminalWheel(event) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  if (!getSelectedSession()) return;
+  const delta = event.deltaY;
+  if (!delta) return;
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation?.();
+  const lines = Math.max(
+    1,
+    Math.min(TERMINAL_WHEEL_MAX_LINES, Math.ceil(Math.abs(delta) / TERMINAL_WHEEL_LINE_HEIGHT))
+  );
+  terminalTmuxCopyModeActive = true;
+  socket.send(
+    JSON.stringify({
+      type: 'tmux-scroll',
+      direction: delta < 0 ? 'up' : 'down',
+      lines,
+    })
+  );
 }
 
 function scheduleFit() {
