@@ -21,6 +21,7 @@ const tokenSessionsModalEl = document.querySelector('#token-sessions-modal');
 const tokenSessionsModalFormEl = document.querySelector('#token-sessions-modal-form');
 const tokenSessionsModalCloseEl = document.querySelector('#token-sessions-modal-close');
 const tokenSessionsListEl = document.querySelector('#token-sessions-list');
+const tokenPanelToggleBtnEl = document.querySelector('#token-panel-toggle-btn');
 const sessionSelectEl = document.querySelector('#session-select');
 const sessionModalEl = document.querySelector('#session-modal');
 const sessionModalFormEl = document.querySelector('#session-modal-form');
@@ -1336,6 +1337,15 @@ function initTokenManagement() {
   setTokenStatus(`Signed in as ${session.role || 'owner'}.`, 'is-success');
   void loadTokens();
   startTokenAutoRefresh();
+
+  if (tokenPanelToggleBtnEl) {
+    tokenPanelToggleBtnEl.addEventListener('click', () => {
+      const collapsed = tokenManagementPanelEl.classList.toggle('token-panel--collapsed');
+      tokenPanelToggleBtnEl.textContent = collapsed ? 'Manage tokens' : 'Hide tokens';
+      tokenPanelToggleBtnEl.setAttribute('aria-expanded', String(!collapsed));
+      scheduleFit();
+    });
+  }
 
   if (createTokenFormEl) {
     createTokenFormEl.addEventListener('submit', (event) => {
