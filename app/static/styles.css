@@ -920,11 +920,13 @@ body.embed .panel {
 
 body.embed .terminal-panel {
   height: auto;
-  min-height: min(640px, calc(100vh - 28px));
+  min-height: 0;
 }
 
 body.embed .terminal-panel .terminal-wrap {
-  min-height: clamp(340px, 48vh, 560px);
+  flex: 0 0 auto;
+  height: clamp(340px, 48vh, 560px);
+  min-height: 0;
 }
 
 body.embed .token-panel {
@@ -1030,8 +1032,9 @@ body.embed .terminal-wrap {
   }
 
   .terminal-panel {
-    flex: 1 0 auto;
-    min-height: min(640px, calc(100vh - 24px));
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .collab-controls {
@@ -1065,8 +1068,9 @@ body.embed .terminal-wrap {
   }
 
   .terminal-wrap {
-    flex: 1;
-    min-height: clamp(300px, 44vh, 520px);
+    flex: 0 0 auto;
+    height: clamp(300px, 44vh, 520px);
+    min-height: 0;
   }
 
   .token-panel {
@@ -1196,11 +1200,12 @@ body.embed .terminal-wrap {
   }
 
   .terminal-panel {
-    min-height: min(590px, calc(100vh - 16px));
+    min-height: 0;
   }
 
   .terminal-wrap {
-    min-height: clamp(320px, 50vh, 520px);
+    height: clamp(320px, 50vh, 520px);
+    min-height: 0;
   }
 
   .primary-button,
