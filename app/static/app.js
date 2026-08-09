@@ -202,8 +202,18 @@ function updateApiKeyModalForProvider() {
   }
 }
 
+function isApiKeyModalOpen() {
+  return Boolean(apiKeyModalEl && !apiKeyModalEl.classList.contains('hidden'));
+}
+
 function openApiKeyModal(options = {}) {
   if (!apiKeyModalEl) return;
+  if (isApiKeyModalOpen()) {
+    // Session polling can request this modal every few seconds. Preserve the
+    // user's provider choice and partially-entered key while it is already open.
+    if (typeof options.afterSave === 'function') apiKeyModalAfterSave = options.afterSave;
+    return;
+  }
   apiKeyModalDismissed = false;
   apiKeyModalAfterSave = typeof options.afterSave === 'function' ? options.afterSave : null;
   const details = getSelectedSessionDetails();
@@ -1106,7 +1116,11 @@ async function loadSessions() {
   setTokenStatus(`Loaded ${String((payload.sessions || []).length)} session(s).`, 'is-success');
   const selectedDetails = getSelectedSessionDetails();
   const selectedProvider = selectedDetails.agent === 'codex' ? 'openai' : getStoredClaudeProvider();
-  if (isPrivilegedRole(session.role) && getSelectedSession() && !getStoredClaudeApiKey(selectedProvider) && !apiKeyModalDismissed) {
+  if (isPrivilegedRole(session.role)
+      && getSelectedSession()
+      && !getStoredClaudeApiKey(selectedProvider)
+      && !apiKeyModalDismissed
+      && !isApiKeyModalOpen()) {
     openApiKeyModal();
   }
   await loadCollabState();
