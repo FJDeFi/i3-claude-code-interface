@@ -27,6 +27,9 @@ const sessionModalEl = document.querySelector('#session-modal');
 const sessionModalFormEl = document.querySelector('#session-modal-form');
 const sessionModalNameEl = document.querySelector('#session-modal-name');
 const sessionModalPathEl = document.querySelector('#session-modal-path');
+const sessionModalAgentEl = document.querySelector('#session-modal-agent');
+const sessionModalProviderEl = document.querySelector('#session-modal-provider');
+const sessionModalProviderFieldEl = document.querySelector('#session-modal-provider-field');
 const sessionModalCloseEl = document.querySelector('#session-modal-close');
 const collabControlsEl = document.querySelector('#collab-controls');
 const collabRoleBadgeEl = document.querySelector('#collab-role-badge');
@@ -45,6 +48,7 @@ const previewCloseBtnEl = document.querySelector('#preview-close-btn');
 const apiKeyModalEl = document.querySelector('#api-key-modal');
 const apiKeyModalFormEl = document.querySelector('#api-key-modal-form');
 const apiKeyModalInputEl = document.querySelector('#api-key-modal-input');
+const apiKeyModalTitleEl = document.querySelector('#api-key-modal-title');
 const apiKeyProviderEl = document.querySelector('#api-key-provider');
 const apiKeyModalLabelEl = document.querySelector('#api-key-modal-label');
 const apiKeyModalHintEl = document.querySelector('#api-key-modal-hint');
@@ -66,6 +70,7 @@ let reconnectTimer = null;
 let lastSessionSelection = '';
 let selectedTokenSessions = [];
 const sessionRootByName = {};
+const sessionDetailsByName = {};
 let allSessions = [];
 let tokenSessionsModalContext = { type: 'create', token: null };
 let tokenSessionsModalSelected = [];
@@ -80,6 +85,7 @@ const terminalOutputDecoder = new TextDecoder();
 const CLAUDE_API_KEY_STORAGE_KEY = 'i3ClaudeCodeApiKey';
 const CLAUDE_PROVIDER_STORAGE_KEY = 'i3ClaudeCodeProvider';
 const GLM_API_KEY_STORAGE_KEY = 'i3ClaudeCodeGlmApiKey';
+const OPENAI_API_KEY_STORAGE_KEY = 'i3CodexOpenAiApiKey';
 const TERMINAL_WHEEL_LINE_HEIGHT = 32;
 const TERMINAL_WHEEL_MAX_LINES = 12;
 
@@ -149,9 +155,16 @@ function getStoredClaudeProvider() {
   }
 }
 
+function getSelectedSessionDetails() {
+  const name = getSelectedSession();
+  return sessionDetailsByName[name] || { name, agent: 'claude', provider: getStoredClaudeProvider() };
+}
+
 function getStoredClaudeApiKey(provider = getStoredClaudeProvider()) {
   try {
-    const storageKey = provider === 'glm' ? GLM_API_KEY_STORAGE_KEY : CLAUDE_API_KEY_STORAGE_KEY;
+    const storageKey = provider === 'openai'
+      ? OPENAI_API_KEY_STORAGE_KEY
+      : (provider === 'glm' ? GLM_API_KEY_STORAGE_KEY : CLAUDE_API_KEY_STORAGE_KEY);
     return localStorage.getItem(storageKey) || '';
   } catch {
     return '';
@@ -160,8 +173,10 @@ function getStoredClaudeApiKey(provider = getStoredClaudeProvider()) {
 
 function setStoredClaudeCredentials(provider, value) {
   try {
-    const normalizedProvider = provider === 'glm' ? 'glm' : 'anthropic';
-    const storageKey = normalizedProvider === 'glm' ? GLM_API_KEY_STORAGE_KEY : CLAUDE_API_KEY_STORAGE_KEY;
+    const normalizedProvider = ['glm', 'openai'].includes(provider) ? provider : 'anthropic';
+    const storageKey = normalizedProvider === 'openai'
+      ? OPENAI_API_KEY_STORAGE_KEY
+      : (normalizedProvider === 'glm' ? GLM_API_KEY_STORAGE_KEY : CLAUDE_API_KEY_STORAGE_KEY);
     localStorage.setItem(CLAUDE_PROVIDER_STORAGE_KEY, normalizedProvider);
     if (value) localStorage.setItem(storageKey, value);
   } catch {
@@ -170,16 +185,20 @@ function setStoredClaudeCredentials(provider, value) {
 }
 
 function updateApiKeyModalForProvider() {
-  const provider = apiKeyProviderEl?.value === 'glm' ? 'glm' : 'anthropic';
-  if (apiKeyModalLabelEl) apiKeyModalLabelEl.textContent = provider === 'glm' ? 'GLM API key' : 'Anthropic API key';
+  const provider = ['glm', 'openai'].includes(apiKeyProviderEl?.value) ? apiKeyProviderEl.value : 'anthropic';
+  const isCodex = provider === 'openai';
+  if (apiKeyModalTitleEl) apiKeyModalTitleEl.textContent = isCodex ? 'OpenAI Codex API key' : 'Claude Code API key';
+  if (apiKeyModalLabelEl) apiKeyModalLabelEl.textContent = isCodex ? 'OpenAI API key' : (provider === 'glm' ? 'GLM API key' : 'Anthropic API key');
   if (apiKeyModalInputEl) {
-    apiKeyModalInputEl.placeholder = provider === 'glm' ? 'Enter your Z.AI API key' : 'sk-ant-...';
+    apiKeyModalInputEl.placeholder = isCodex ? 'sk-proj-...' : (provider === 'glm' ? 'Enter your Z.AI API key' : 'sk-ant-...');
     apiKeyModalInputEl.value = getStoredClaudeApiKey(provider);
   }
   if (apiKeyModalHintEl) {
-    apiKeyModalHintEl.textContent = provider === 'glm'
-      ? 'Claude Code will connect to GLM through the Z.AI Anthropic-compatible endpoint.'
-      : 'This key is saved in this browser and sent only when starting a Claude Code session.';
+    apiKeyModalHintEl.textContent = isCodex
+      ? 'The key is used to sign this session into Codex and is isolated from other Codex sessions.'
+      : (provider === 'glm'
+        ? 'Claude Code will connect to GLM through the Z.AI Anthropic-compatible endpoint.'
+        : 'This key is saved in this browser and sent only when starting a Claude Code session.');
   }
 }
 
@@ -187,7 +206,11 @@ function openApiKeyModal(options = {}) {
   if (!apiKeyModalEl) return;
   apiKeyModalDismissed = false;
   apiKeyModalAfterSave = typeof options.afterSave === 'function' ? options.afterSave : null;
-  if (apiKeyProviderEl) apiKeyProviderEl.value = getStoredClaudeProvider();
+  const details = getSelectedSessionDetails();
+  if (apiKeyProviderEl) {
+    apiKeyProviderEl.value = details.agent === 'codex' ? 'openai' : details.provider;
+    apiKeyProviderEl.disabled = Boolean(sessionDetailsByName[details.name]?.configured);
+  }
   updateApiKeyModalForProvider();
   apiKeyModalEl.classList.remove('hidden');
   setTimeout(() => apiKeyModalInputEl?.focus(), 0);
@@ -202,14 +225,14 @@ function closeApiKeyModal() {
 
 function saveApiKeyFromModal(event) {
   if (event) event.preventDefault();
-  const provider = apiKeyProviderEl?.value === 'glm' ? 'glm' : 'anthropic';
+  const provider = ['glm', 'openai'].includes(apiKeyProviderEl?.value) ? apiKeyProviderEl.value : 'anthropic';
   const key = (apiKeyModalInputEl?.value || '').trim();
   if (!key) {
-    setTokenStatus(`Enter a ${provider === 'glm' ? 'GLM' : 'Claude Code'} API key.`, 'is-error');
+    setTokenStatus(`Enter a ${provider === 'openai' ? 'OpenAI' : (provider === 'glm' ? 'GLM' : 'Claude Code')} API key.`, 'is-error');
     return;
   }
   setStoredClaudeCredentials(provider, key);
-  setTokenStatus(`${provider === 'glm' ? 'GLM' : 'Anthropic'} API key saved.`, 'is-success');
+  setTokenStatus(`${provider === 'openai' ? 'OpenAI' : (provider === 'glm' ? 'GLM' : 'Anthropic')} API key saved.`, 'is-success');
   const next = apiKeyModalAfterSave;
   closeApiKeyModal();
   if (next) setTimeout(() => next(), 0);
@@ -489,7 +512,9 @@ async function connect() {
   }
 
   await loadCollabState();
-  const provider = getStoredClaudeProvider();
+  const details = getSelectedSessionDetails();
+  const provider = details.agent === 'codex' ? 'openai' : details.provider;
+  const agent = details.agent;
   const apiKey = getStoredClaudeApiKey(provider);
   if (!apiKey && isPrivilegedRole(session.role) && currentCollabState?.isController !== false) {
     setConnectionStatus('offline', 'Enter Claude Code API key');
@@ -512,6 +537,7 @@ async function connect() {
     startPayload.session = selected;
     if (apiKey) {
       startPayload.provider = provider;
+      startPayload.agent = agent;
       startPayload.api_key = apiKey;
     }
     const rootDir = sessionRootByName[selected];
@@ -1025,14 +1051,21 @@ function getSelectedSession() {
 
 function openSessionModal() {
   if (!sessionModalEl) return;
+  updateSessionModalForAgent();
   sessionModalEl.classList.remove('hidden');
   sessionModalNameEl?.focus();
+}
+
+function updateSessionModalForAgent() {
+  const isCodex = sessionModalAgentEl?.value === 'codex';
+  sessionModalProviderFieldEl?.classList.toggle('hidden', isCodex);
 }
 
 function closeSessionModal() {
   if (!sessionModalEl) return;
   sessionModalEl.classList.add('hidden');
   if (sessionModalFormEl) sessionModalFormEl.reset();
+  updateSessionModalForAgent();
   if (sessionSelectEl && lastSessionSelection) {
     sessionSelectEl.value = lastSessionSelection;
   }
@@ -1059,6 +1092,8 @@ async function loadSessions() {
     return [];
   }
   allSessions = payload.sessions || [];
+  Object.keys(sessionDetailsByName).forEach((name) => delete sessionDetailsByName[name]);
+  Object.assign(sessionDetailsByName, payload.sessionDetails || {});
   renderSessionSelect(payload.sessions || []);
   renderTokenSessionOptions(payload.sessions || []);
   const selected = getSelectedSession();
@@ -1071,7 +1106,9 @@ async function loadSessions() {
     lastSessionSelection = '';
   }
   setTokenStatus(`Loaded ${String((payload.sessions || []).length)} session(s).`, 'is-success');
-  if (isPrivilegedRole(session.role) && getSelectedSession() && !getStoredClaudeApiKey() && !apiKeyModalDismissed) {
+  const selectedDetails = getSelectedSessionDetails();
+  const selectedProvider = selectedDetails.agent === 'codex' ? 'openai' : selectedDetails.provider;
+  if (isPrivilegedRole(session.role) && getSelectedSession() && !getStoredClaudeApiKey(selectedProvider) && !apiKeyModalDismissed) {
     openApiKeyModal();
   }
   await loadCollabState();
@@ -1089,7 +1126,9 @@ function renderSessionSelect(sessions) {
   const sorted = (sessions || []).slice().sort();
   for (const s of sorted) {
     if (!s) continue;
-    sessionSelectEl.appendChild(new Option(s, s));
+    const details = sessionDetailsByName[s];
+    const suffix = details?.agent === 'codex' ? 'Codex' : (details?.provider === 'glm' ? 'Claude + GLM' : 'Claude');
+    sessionSelectEl.appendChild(new Option(`${s} — ${suffix}`, s));
   }
   if (current && current !== '__create__') {
     sessionSelectEl.value = current;
@@ -1152,6 +1191,8 @@ async function createSessionFromModal(event) {
   if (event) event.preventDefault();
   const name = (sessionModalNameEl?.value || '').trim();
   const path = (sessionModalPathEl?.value || '').trim() || undefined;
+  const agent = sessionModalAgentEl?.value === 'codex' ? 'codex' : 'claude';
+  const provider = agent === 'codex' ? 'openai' : (sessionModalProviderEl?.value === 'glm' ? 'glm' : 'anthropic');
   if (!name) {
     setTokenStatus('Enter a session name.', 'is-error');
     return;
@@ -1160,7 +1201,7 @@ async function createSessionFromModal(event) {
   const resp = await apiFetch('/api/claudecode/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, path }),
+    body: JSON.stringify({ name, path, agent, provider }),
   });
   const payload = await resp.json().catch(() => ({}));
   if (!resp.ok) {
@@ -1412,6 +1453,8 @@ function initTokenManagement() {
     });
   }
   apiKeyProviderEl?.addEventListener('change', updateApiKeyModalForProvider);
+  sessionModalAgentEl?.addEventListener('change', updateSessionModalForAgent);
+  updateSessionModalForAgent();
 
   if (apiKeyModalCloseEl) {
     apiKeyModalCloseEl.addEventListener('click', () => {

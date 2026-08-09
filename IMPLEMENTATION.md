@@ -97,6 +97,7 @@ and creates a short-lived HttpOnly, Secure, Partitioned Redis-backed session.
 | `SSH_REMOTE_COMMAND` | no | If set, remote runs `bash -lc` with this command after optional `ANTHROPIC_API_KEY` export |
 | `ANTHROPIC_API_KEY` | no | If set without `SSH_REMOTE_COMMAND`, remote runs `bash -lc` that exports the key and `exec`s `CLAUDE_CODE_CMD` |
 | `CLAUDE_CODE_CMD` | no | Default `claude` |
+| `CODEX_CMD` | no | Codex CLI executable; default `codex` |
 | `SSH_TERM_TYPE` | no | Default `xterm-256color` |
 | `SSH_INITIAL_COLS` / `SSH_INITIAL_ROWS` | no | Initial PTY size before the client sends resize |
 | `CLAUDE_CODE_REDIS_URL` | no | Redis connection string; default `redis://127.0.0.1:6379` |
@@ -110,6 +111,31 @@ bridge starts Claude Code with `ANTHROPIC_AUTH_TOKEN`,
 `ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic`, and a longer API timeout.
 Provider values are validated by the backend and API keys are not written to
 application logs.
+
+### Coding agents
+
+New sessions select one coding agent and keep that choice for the lifetime of
+the tmux session:
+
+- **Claude Code** with either Anthropic or GLM (Z.AI)
+- **OpenAI Codex** with an OpenAI Platform API key
+
+Session agent/provider metadata is stored in tmux user options and returned by
+the sessions API. On first connection, the bridge starts the selected CLI in
+the session pane. Codex authenticates with `codex login --with-api-key` and uses
+an isolated `CODEX_HOME` at `~/.codex-i3/<session-name>`, so credentials are not
+shared between Codex sessions.
+
+Install both CLIs on the VM when both agent types are enabled. Codex can be
+installed on macOS/Linux with OpenAI's standalone installer:
+
+```bash
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+codex --version
+```
+
+The VM user running the terminal sessions must have `codex` on its `PATH`.
+OpenAI API-key usage is billed through the associated OpenAI Platform account.
 
 ### Client-side token management
 
