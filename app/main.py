@@ -408,6 +408,12 @@ async def terminal_socket(websocket: WebSocket) -> None:
         await websocket.send_text(json.dumps({"type": "error", "message": "Access denied for this session"}))
         await websocket.close(code=4403)
         return
+    if isinstance(start, tuple):
+        details = _session_details(tmux_session)
+        # Metadata on newly-created sessions is authoritative. Legacy sessions
+        # keep accepting the client-side Claude provider for compatibility.
+        if details["configured"]:
+            start = (start[0], start[1], start[2], details["provider"], details["agent"])
 
     state = await _ensure_collab_for_privileged(tmux_session, session)
     if state is None:
@@ -560,6 +566,30 @@ def _run_cmd(cmd: str) -> tuple[int, str, str]:
         return (255, "", str(e))
 
 
+def _tmux_option(name: str, option: str) -> str:
+    if not _safe_session_name(name):
+        return ""
+    rc, out, _ = _run_cmd(
+        f"tmux show-option -qv -t {shlex.quote(name)} {shlex.quote(option)}"
+    )
+    return out.strip() if rc == 0 else ""
+
+
+def _session_details(name: str) -> dict[str, object]:
+    agent = _tmux_option(name, "@i3_agent")
+    provider = _tmux_option(name, "@i3_provider")
+    configured = agent in {"claude", "codex"}
+    if agent not in {"claude", "codex"}:
+        agent = "claude"
+    if provider not in {"anthropic", "glm", "openai"}:
+        provider = "openai" if agent == "codex" else "anthropic"
+    if agent == "codex":
+        provider = "openai"
+    elif provider == "openai":
+        provider = "anthropic"
+    return {"name": name, "agent": agent, "provider": provider, "configured": configured}
+
+
 @app.get("/api/claudecode/sessions")
 async def list_claudecode_sessions(request: Request) -> JSONResponse:
     # Determine caller: privileged session or a token-based session
@@ -589,7 +619,8 @@ async def list_claudecode_sessions(request: Request) -> JSONResponse:
             allowed_set = {s.strip() for s in allowed.split(",") if s.strip()}
             sessions = [s for s in sessions if s in allowed_set]
 
-    return JSONResponse({"sessions": sessions})
+    details = {name: _session_details(name) for name in sessions}
+    return JSONResponse({"sessions": sessions, "sessionDetails": details})
 
 
 @app.api_route("/preview/{port}/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
@@ -655,10 +686,18 @@ async def create_claudecode_session(request: Request) -> JSONResponse:
     body = await request.json()
     name = str(body.get("name") or "").strip()
     path = body.get("path") or None
+    agent = str(body.get("agent") or "claude").strip().lower()
+    provider = str(body.get("provider") or ("openai" if agent == "codex" else "anthropic")).strip().lower()
     if not name:
         return JSONResponse(status_code=400, content={"detail": "Session name required"})
     if not _safe_session_name(name):
         return JSONResponse(status_code=400, content={"detail": "Invalid session name"})
+    if agent not in {"claude", "codex"}:
+        return JSONResponse(status_code=400, content={"detail": "Invalid coding agent"})
+    if agent == "codex":
+        provider = "openai"
+    elif provider not in {"anthropic", "glm"}:
+        return JSONResponse(status_code=400, content={"detail": "Invalid Claude provider"})
 
     name_q = shlex.quote(name)
     cmd = f"tmux new -d -s {name_q}"
@@ -669,12 +708,15 @@ async def create_claudecode_session(request: Request) -> JSONResponse:
     if rc != 0:
         return JSONResponse(status_code=500, content={"detail": "Failed to create session", "error": err})
     _run_cmd(f"tmux set-option -t {name_q} status off")
+    _run_cmd(f"tmux set-option -t {name_q} @i3_agent {shlex.quote(agent)}")
+    _run_cmd(f"tmux set-option -t {name_q} @i3_provider {shlex.quote(provider)}")
+    _run_cmd(f"tmux set-option -t {name_q} @i3_agent_started 0")
     await ensure_collab_state(
         name,
         master_id=_session_actor_id(session),
         master_label=_session_actor_label(session),
     )
-    return JSONResponse({"name": name})
+    return JSONResponse({"name": name, "agent": agent, "provider": provider})
 
 
 @app.get("/api/claudecode/sessions/{name}/collab")

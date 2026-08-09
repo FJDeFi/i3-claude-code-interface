@@ -225,7 +225,38 @@ def test_create_claudecode_session_hides_tmux_status(monkeypatch, client):
     assert commands == [
         "tmux new -d -s demo",
         "tmux set-option -t demo status off",
+        "tmux set-option -t demo @i3_agent claude",
+        "tmux set-option -t demo @i3_provider anthropic",
+        "tmux set-option -t demo @i3_agent_started 0",
     ]
+
+
+def test_create_codex_session_records_agent_metadata(monkeypatch, client):
+    commands = []
+
+    async def fake_require_privileged_session(request):
+        return {"token": "owner", "role": "owner", "accessType": "editor"}
+
+    async def fake_ensure_collab_state(*args, **kwargs):
+        return None
+
+    def fake_run_cmd(cmd):
+        commands.append(cmd)
+        return 0, "", ""
+
+    monkeypatch.setattr("app.main._require_privileged_session", fake_require_privileged_session)
+    monkeypatch.setattr("app.main.ensure_collab_state", fake_ensure_collab_state)
+    monkeypatch.setattr("app.main._run_cmd", fake_run_cmd)
+
+    response = client.post(
+        "/api/claudecode/sessions",
+        json={"name": "codex-demo", "agent": "codex", "provider": "glm"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"name": "codex-demo", "agent": "codex", "provider": "openai"}
+    assert "tmux set-option -t codex-demo @i3_agent codex" in commands
+    assert "tmux set-option -t codex-demo @i3_provider openai" in commands
 
 
 def test_collab_api_status_request_and_transfer(monkeypatch, client):

@@ -155,7 +155,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="static/app.js?v=20260809-glm-provider" defer></script>
+    <script src="static/app.js?v=20260809-coding-agents" defer></script>
     <div class="modal hidden" id="session-modal" role="dialog" aria-modal="true">
       <div class="modal__content">
         <header class="modal__header">
@@ -171,6 +171,20 @@
             <span>Optional path</span>
             <input id="session-modal-path" type="text" placeholder="/home/claude" />
           </label>
+          <label>
+            <span>Coding agent</span>
+            <select id="session-modal-agent">
+              <option value="claude" selected>Claude Code</option>
+              <option value="codex">OpenAI Codex</option>
+            </select>
+          </label>
+          <label id="session-modal-provider-field">
+            <span>Claude model provider</span>
+            <select id="session-modal-provider">
+              <option value="anthropic" selected>Anthropic</option>
+              <option value="glm">GLM (Z.AI)</option>
+            </select>
+          </label>
           <div class="modal__actions">
             <button class="primary-button" type="submit">Create session</button>
           </div>
@@ -180,7 +194,7 @@
     <div class="modal hidden" id="api-key-modal" role="dialog" aria-modal="true">
       <div class="modal__content">
         <header class="modal__header">
-          <h3>Claude Code API key</h3>
+          <h3 id="api-key-modal-title">Coding agent API key</h3>
           <button class="ghost-button" id="api-key-modal-close" type="button">Close</button>
         </header>
         <form id="api-key-modal-form" class="modal__form">
@@ -189,6 +203,7 @@
             <select id="api-key-provider">
               <option value="anthropic" selected>Anthropic</option>
               <option value="glm">GLM (Z.AI)</option>
+              <option value="openai">OpenAI</option>
             </select>
           </label>
           <label>

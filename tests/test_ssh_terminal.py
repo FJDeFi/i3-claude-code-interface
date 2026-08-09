@@ -278,7 +278,7 @@ def test_receive_start_with_glm_provider():
             }
 
     start = asyncio.run(ssh_terminal.receive_terminal_start(FakeWebSocket()))
-    assert start == ("glm-secret", "demo", None, "glm")
+    assert start == ("glm-secret", "demo", None, "glm", "claude")
 
 
 def test_receive_start_rejects_unknown_provider():
@@ -290,7 +290,24 @@ def test_receive_start_rejects_unknown_provider():
             }
 
     start = asyncio.run(ssh_terminal.receive_terminal_start(FakeWebSocket()))
-    assert start == ("secret", "demo", None, "anthropic")
+    assert start == ("secret", "demo", None, "anthropic", "claude")
+
+
+def test_build_remote_command_with_codex_key(monkeypatch):
+    monkeypatch.setenv("CODEX_CMD", "codex")
+    argv = ssh_terminal.build_remote_command_argv(
+        "sk-openai-secret",
+        tmux_session="codex-demo",
+        root_dir="/workspace",
+        provider="openai",
+        agent="codex",
+    )
+    inner = argv[2]
+    assert "OPENAI_API_KEY=sk-openai-secret" in inner
+    assert 'CODEX_HOME="$HOME/.codex-i3/codex-demo"' in inner
+    assert "codex login --with-api-key" in inner
+    assert "exec codex" in inner
+    assert "ANTHROPIC_API_KEY" not in inner
 
 
 def test_default_term_size(monkeypatch):
