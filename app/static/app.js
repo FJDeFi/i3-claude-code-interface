@@ -27,9 +27,6 @@ const sessionModalEl = document.querySelector('#session-modal');
 const sessionModalFormEl = document.querySelector('#session-modal-form');
 const sessionModalNameEl = document.querySelector('#session-modal-name');
 const sessionModalPathEl = document.querySelector('#session-modal-path');
-const sessionModalAgentEl = document.querySelector('#session-modal-agent');
-const sessionModalProviderEl = document.querySelector('#session-modal-provider');
-const sessionModalProviderFieldEl = document.querySelector('#session-modal-provider-field');
 const sessionModalCloseEl = document.querySelector('#session-modal-close');
 const collabControlsEl = document.querySelector('#collab-controls');
 const collabRoleBadgeEl = document.querySelector('#collab-role-badge');
@@ -49,7 +46,8 @@ const apiKeyModalEl = document.querySelector('#api-key-modal');
 const apiKeyModalFormEl = document.querySelector('#api-key-modal-form');
 const apiKeyModalInputEl = document.querySelector('#api-key-modal-input');
 const apiKeyModalTitleEl = document.querySelector('#api-key-modal-title');
-const apiKeyProviderEl = document.querySelector('#api-key-provider');
+const apiKeyProviderEls = document.querySelectorAll('input[name="api-key-provider"]');
+const apiKeyProviderFieldEl = document.querySelector('#api-key-provider-field');
 const apiKeyModalLabelEl = document.querySelector('#api-key-modal-label');
 const apiKeyModalHintEl = document.querySelector('#api-key-modal-hint');
 const apiKeyModalCloseEl = document.querySelector('#api-key-modal-close');
@@ -185,7 +183,9 @@ function setStoredClaudeCredentials(provider, value) {
 }
 
 function updateApiKeyModalForProvider() {
-  const provider = ['glm', 'openai'].includes(apiKeyProviderEl?.value) ? apiKeyProviderEl.value : 'anthropic';
+  const details = getSelectedSessionDetails();
+  const selectedProvider = document.querySelector('input[name="api-key-provider"]:checked')?.value;
+  const provider = details.agent === 'codex' ? 'openai' : (selectedProvider === 'glm' ? 'glm' : 'anthropic');
   const isCodex = provider === 'openai';
   if (apiKeyModalTitleEl) apiKeyModalTitleEl.textContent = isCodex ? 'OpenAI Codex API key' : 'Claude Code API key';
   if (apiKeyModalLabelEl) apiKeyModalLabelEl.textContent = isCodex ? 'OpenAI API key' : (provider === 'glm' ? 'GLM API key' : 'Anthropic API key');
@@ -207,9 +207,12 @@ function openApiKeyModal(options = {}) {
   apiKeyModalDismissed = false;
   apiKeyModalAfterSave = typeof options.afterSave === 'function' ? options.afterSave : null;
   const details = getSelectedSessionDetails();
-  if (apiKeyProviderEl) {
-    apiKeyProviderEl.value = details.agent === 'codex' ? 'openai' : details.provider;
-    apiKeyProviderEl.disabled = Boolean(sessionDetailsByName[details.name]?.configured);
+  const isCodex = details.agent === 'codex';
+  apiKeyProviderFieldEl?.classList.toggle('hidden', isCodex);
+  if (!isCodex) {
+    const preferredProvider = getStoredClaudeProvider();
+    const preferredRadio = document.querySelector(`input[name="api-key-provider"][value="${preferredProvider}"]`);
+    if (preferredRadio) preferredRadio.checked = true;
   }
   updateApiKeyModalForProvider();
   apiKeyModalEl.classList.remove('hidden');
@@ -225,7 +228,9 @@ function closeApiKeyModal() {
 
 function saveApiKeyFromModal(event) {
   if (event) event.preventDefault();
-  const provider = ['glm', 'openai'].includes(apiKeyProviderEl?.value) ? apiKeyProviderEl.value : 'anthropic';
+  const details = getSelectedSessionDetails();
+  const selectedProvider = document.querySelector('input[name="api-key-provider"]:checked')?.value;
+  const provider = details.agent === 'codex' ? 'openai' : (selectedProvider === 'glm' ? 'glm' : 'anthropic');
   const key = (apiKeyModalInputEl?.value || '').trim();
   if (!key) {
     setTokenStatus(`Enter a ${provider === 'openai' ? 'OpenAI' : (provider === 'glm' ? 'GLM' : 'Claude Code')} API key.`, 'is-error');
@@ -513,7 +518,7 @@ async function connect() {
 
   await loadCollabState();
   const details = getSelectedSessionDetails();
-  const provider = details.agent === 'codex' ? 'openai' : details.provider;
+  const provider = details.agent === 'codex' ? 'openai' : getStoredClaudeProvider();
   const agent = details.agent;
   const apiKey = getStoredClaudeApiKey(provider);
   if (!apiKey && isPrivilegedRole(session.role) && currentCollabState?.isController !== false) {
@@ -1051,21 +1056,14 @@ function getSelectedSession() {
 
 function openSessionModal() {
   if (!sessionModalEl) return;
-  updateSessionModalForAgent();
   sessionModalEl.classList.remove('hidden');
   sessionModalNameEl?.focus();
-}
-
-function updateSessionModalForAgent() {
-  const isCodex = sessionModalAgentEl?.value === 'codex';
-  sessionModalProviderFieldEl?.classList.toggle('hidden', isCodex);
 }
 
 function closeSessionModal() {
   if (!sessionModalEl) return;
   sessionModalEl.classList.add('hidden');
   if (sessionModalFormEl) sessionModalFormEl.reset();
-  updateSessionModalForAgent();
   if (sessionSelectEl && lastSessionSelection) {
     sessionSelectEl.value = lastSessionSelection;
   }
@@ -1107,7 +1105,7 @@ async function loadSessions() {
   }
   setTokenStatus(`Loaded ${String((payload.sessions || []).length)} session(s).`, 'is-success');
   const selectedDetails = getSelectedSessionDetails();
-  const selectedProvider = selectedDetails.agent === 'codex' ? 'openai' : selectedDetails.provider;
+  const selectedProvider = selectedDetails.agent === 'codex' ? 'openai' : getStoredClaudeProvider();
   if (isPrivilegedRole(session.role) && getSelectedSession() && !getStoredClaudeApiKey(selectedProvider) && !apiKeyModalDismissed) {
     openApiKeyModal();
   }
@@ -1191,8 +1189,7 @@ async function createSessionFromModal(event) {
   if (event) event.preventDefault();
   const name = (sessionModalNameEl?.value || '').trim();
   const path = (sessionModalPathEl?.value || '').trim() || undefined;
-  const agent = sessionModalAgentEl?.value === 'codex' ? 'codex' : 'claude';
-  const provider = agent === 'codex' ? 'openai' : (sessionModalProviderEl?.value === 'glm' ? 'glm' : 'anthropic');
+  const agent = document.querySelector('input[name="session-agent"]:checked')?.value === 'codex' ? 'codex' : 'claude';
   if (!name) {
     setTokenStatus('Enter a session name.', 'is-error');
     return;
@@ -1201,7 +1198,7 @@ async function createSessionFromModal(event) {
   const resp = await apiFetch('/api/claudecode/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, path, agent, provider }),
+    body: JSON.stringify({ name, path, agent }),
   });
   const payload = await resp.json().catch(() => ({}));
   if (!resp.ok) {
@@ -1452,9 +1449,7 @@ function initTokenManagement() {
       saveApiKeyFromModal(ev);
     });
   }
-  apiKeyProviderEl?.addEventListener('change', updateApiKeyModalForProvider);
-  sessionModalAgentEl?.addEventListener('change', updateSessionModalForAgent);
-  updateSessionModalForAgent();
+  apiKeyProviderEls.forEach((radio) => radio.addEventListener('change', updateApiKeyModalForProvider));
 
   if (apiKeyModalCloseEl) {
     apiKeyModalCloseEl.addEventListener('click', () => {

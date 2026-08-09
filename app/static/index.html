@@ -9,7 +9,7 @@
     <meta name="theme-color" content="#fff8ef" />
     <title>Claude Code Interface</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
-    <link rel="stylesheet" href="static/styles.css?v=20260726-terminal-layout" />
+    <link rel="stylesheet" href="static/styles.css?v=20260809-radio-cards" />
   </head>
   <body>
     <main class="shell">
@@ -155,7 +155,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="static/app.js?v=20260809-coding-agents" defer></script>
+    <script src="static/app.js?v=20260809-radio-cards" defer></script>
     <div class="modal hidden" id="session-modal" role="dialog" aria-modal="true">
       <div class="modal__content">
         <header class="modal__header">
@@ -171,20 +171,27 @@
             <span>Optional path</span>
             <input id="session-modal-path" type="text" placeholder="/home/claude" />
           </label>
-          <label>
-            <span>Coding agent</span>
-            <select id="session-modal-agent">
-              <option value="claude" selected>Claude Code</option>
-              <option value="codex">OpenAI Codex</option>
-            </select>
-          </label>
-          <label id="session-modal-provider-field">
-            <span>Claude model provider</span>
-            <select id="session-modal-provider">
-              <option value="anthropic" selected>Anthropic</option>
-              <option value="glm">GLM (Z.AI)</option>
-            </select>
-          </label>
+          <fieldset class="choice-fieldset">
+            <legend>Coding agent</legend>
+            <div class="choice-cards">
+              <label class="choice-card">
+                <input type="radio" name="session-agent" value="claude" checked />
+                <span class="choice-card__dot" aria-hidden="true"></span>
+                <span class="choice-card__copy">
+                  <strong>Claude Code</strong>
+                  <small>Anthropic or GLM</small>
+                </span>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="session-agent" value="codex" />
+                <span class="choice-card__dot" aria-hidden="true"></span>
+                <span class="choice-card__copy">
+                  <strong>OpenAI Codex</strong>
+                  <small>OpenAI coding agent</small>
+                </span>
+              </label>
+            </div>
+          </fieldset>
           <div class="modal__actions">
             <button class="primary-button" type="submit">Create session</button>
           </div>
@@ -198,14 +205,27 @@
           <button class="ghost-button" id="api-key-modal-close" type="button">Close</button>
         </header>
         <form id="api-key-modal-form" class="modal__form">
-          <label>
-            <span>AI provider</span>
-            <select id="api-key-provider">
-              <option value="anthropic" selected>Anthropic</option>
-              <option value="glm">GLM (Z.AI)</option>
-              <option value="openai">OpenAI</option>
-            </select>
-          </label>
+          <fieldset class="choice-fieldset" id="api-key-provider-field">
+            <legend>AI provider</legend>
+            <div class="choice-cards">
+              <label class="choice-card">
+                <input type="radio" name="api-key-provider" value="anthropic" checked />
+                <span class="choice-card__dot" aria-hidden="true"></span>
+                <span class="choice-card__copy">
+                  <strong>Anthropic</strong>
+                  <small>Claude API key</small>
+                </span>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="api-key-provider" value="glm" />
+                <span class="choice-card__dot" aria-hidden="true"></span>
+                <span class="choice-card__copy">
+                  <strong>GLM</strong>
+                  <small>Z.AI API key</small>
+                </span>
+              </label>
+            </div>
+          </fieldset>
           <label>
             <span id="api-key-modal-label">Anthropic API key</span>
             <input id="api-key-modal-input" type="password" placeholder="sk-ant-..." autocomplete="off" />

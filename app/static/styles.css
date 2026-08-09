@@ -593,6 +593,120 @@ code {
   background: rgba(255, 255, 255, 0.92);
 }
 
+.choice-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice-fieldset legend {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.choice-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.modal__form .choice-card {
+  position: relative;
+  display: flex;
+  grid-template-columns: none;
+  flex-direction: row;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  min-height: 70px;
+  padding: 12px 13px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.76);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.modal__form .choice-card:hover {
+  border-color: var(--border-strong);
+  background: rgba(255, 248, 239, 0.96);
+  transform: translateY(-1px);
+}
+
+.choice-card:has(input:checked) {
+  border-color: rgba(232, 93, 4, 0.58);
+  background: var(--primary-soft);
+  box-shadow: 0 0 0 3px rgba(255, 122, 26, 0.1);
+}
+
+.modal__form .choice-card input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.choice-card__dot {
+  position: relative;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(115, 95, 77, 0.48);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.choice-card input:checked + .choice-card__dot {
+  border-color: var(--primary);
+}
+
+.choice-card input:checked + .choice-card__dot::after {
+  position: absolute;
+  inset: 3px;
+  content: "";
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+.choice-card:focus-within {
+  outline: 3px solid rgba(255, 122, 26, 0.2);
+  outline-offset: 2px;
+}
+
+.choice-card__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.choice-card__copy strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.choice-card__copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .choice-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
 .modal__hint {
   margin: -2px 0 0;
   color: var(--muted);
