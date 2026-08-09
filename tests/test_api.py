@@ -226,7 +226,6 @@ def test_create_claudecode_session_hides_tmux_status(monkeypatch, client):
         "tmux new -d -s demo",
         "tmux set-option -t demo status off",
         "tmux set-option -t demo @i3_agent claude",
-        "tmux set-option -t demo @i3_provider anthropic",
         "tmux set-option -t demo @i3_agent_started 0",
     ]
 
@@ -250,13 +249,13 @@ def test_create_codex_session_records_agent_metadata(monkeypatch, client):
 
     response = client.post(
         "/api/claudecode/sessions",
-        json={"name": "codex-demo", "agent": "codex", "provider": "glm"},
+        json={"name": "codex-demo", "agent": "codex"},
     )
 
     assert response.status_code == 200
-    assert response.json() == {"name": "codex-demo", "agent": "codex", "provider": "openai"}
+    assert response.json() == {"name": "codex-demo", "agent": "codex"}
     assert "tmux set-option -t codex-demo @i3_agent codex" in commands
-    assert "tmux set-option -t codex-demo @i3_provider openai" in commands
+    assert not any("@i3_provider" in command for command in commands)
 
 
 def test_collab_api_status_request_and_transfer(monkeypatch, client):

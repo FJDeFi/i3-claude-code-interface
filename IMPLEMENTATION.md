@@ -114,8 +114,9 @@ application logs.
 
 ### Coding agents
 
-New sessions select one coding agent and keep that choice for the lifetime of
-the tmux session:
+The create-session dialog selects one coding agent and keeps that choice for
+the lifetime of the tmux session. Claude's Anthropic/GLM provider is selected
+separately in the API-key dialog:
 
 - **Claude Code** with either Anthropic or GLM (Z.AI)
 - **OpenAI Codex** with an OpenAI Platform API key
