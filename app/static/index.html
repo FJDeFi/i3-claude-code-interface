@@ -155,7 +155,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="static/app.js?v=20260726-terminal-layout" defer></script>
+    <script src="static/app.js?v=20260809-glm-provider" defer></script>
     <div class="modal hidden" id="session-modal" role="dialog" aria-modal="true">
       <div class="modal__content">
         <header class="modal__header">
@@ -185,11 +185,18 @@
         </header>
         <form id="api-key-modal-form" class="modal__form">
           <label>
-            <span>Anthropic API key</span>
+            <span>AI provider</span>
+            <select id="api-key-provider">
+              <option value="anthropic" selected>Anthropic</option>
+              <option value="glm">GLM (Z.AI)</option>
+            </select>
+          </label>
+          <label>
+            <span id="api-key-modal-label">Anthropic API key</span>
             <input id="api-key-modal-input" type="password" placeholder="sk-ant-..." autocomplete="off" />
           </label>
           <p class="modal__hint">
-            This key is saved in this browser and sent only when starting a Claude Code session.
+            <span id="api-key-modal-hint">This key is saved in this browser and sent only when starting a Claude Code session.</span>
           </p>
           <div class="modal__actions">
             <button class="primary-button" type="submit">Save and continue</button>

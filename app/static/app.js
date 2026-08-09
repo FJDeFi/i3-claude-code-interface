@@ -45,6 +45,9 @@ const previewCloseBtnEl = document.querySelector('#preview-close-btn');
 const apiKeyModalEl = document.querySelector('#api-key-modal');
 const apiKeyModalFormEl = document.querySelector('#api-key-modal-form');
 const apiKeyModalInputEl = document.querySelector('#api-key-modal-input');
+const apiKeyProviderEl = document.querySelector('#api-key-provider');
+const apiKeyModalLabelEl = document.querySelector('#api-key-modal-label');
+const apiKeyModalHintEl = document.querySelector('#api-key-modal-hint');
 const apiKeyModalCloseEl = document.querySelector('#api-key-modal-close');
 const accountSummaryEl = document.querySelector('#account-summary');
 const accountNameEl = document.querySelector('#account-name');
@@ -75,6 +78,8 @@ let terminalTmuxCopyModeActive = false;
 let controllerTerminalSize = null;
 const terminalOutputDecoder = new TextDecoder();
 const CLAUDE_API_KEY_STORAGE_KEY = 'i3ClaudeCodeApiKey';
+const CLAUDE_PROVIDER_STORAGE_KEY = 'i3ClaudeCodeProvider';
+const GLM_API_KEY_STORAGE_KEY = 'i3ClaudeCodeGlmApiKey';
 const TERMINAL_WHEEL_LINE_HEIGHT = 32;
 const TERMINAL_WHEEL_MAX_LINES = 12;
 
@@ -136,19 +141,45 @@ function isPrivilegedRole(role) {
   return ['owner', 'administrator', 'admin'].includes(String(role || '').toLowerCase());
 }
 
-function getStoredClaudeApiKey() {
+function getStoredClaudeProvider() {
   try {
-    return localStorage.getItem(CLAUDE_API_KEY_STORAGE_KEY) || '';
+    return localStorage.getItem(CLAUDE_PROVIDER_STORAGE_KEY) === 'glm' ? 'glm' : 'anthropic';
+  } catch {
+    return 'anthropic';
+  }
+}
+
+function getStoredClaudeApiKey(provider = getStoredClaudeProvider()) {
+  try {
+    const storageKey = provider === 'glm' ? GLM_API_KEY_STORAGE_KEY : CLAUDE_API_KEY_STORAGE_KEY;
+    return localStorage.getItem(storageKey) || '';
   } catch {
     return '';
   }
 }
 
-function setStoredClaudeApiKey(value) {
+function setStoredClaudeCredentials(provider, value) {
   try {
-    if (value) localStorage.setItem(CLAUDE_API_KEY_STORAGE_KEY, value);
+    const normalizedProvider = provider === 'glm' ? 'glm' : 'anthropic';
+    const storageKey = normalizedProvider === 'glm' ? GLM_API_KEY_STORAGE_KEY : CLAUDE_API_KEY_STORAGE_KEY;
+    localStorage.setItem(CLAUDE_PROVIDER_STORAGE_KEY, normalizedProvider);
+    if (value) localStorage.setItem(storageKey, value);
   } catch {
     // Ignore browsers that block localStorage.
+  }
+}
+
+function updateApiKeyModalForProvider() {
+  const provider = apiKeyProviderEl?.value === 'glm' ? 'glm' : 'anthropic';
+  if (apiKeyModalLabelEl) apiKeyModalLabelEl.textContent = provider === 'glm' ? 'GLM API key' : 'Anthropic API key';
+  if (apiKeyModalInputEl) {
+    apiKeyModalInputEl.placeholder = provider === 'glm' ? 'Enter your Z.AI API key' : 'sk-ant-...';
+    apiKeyModalInputEl.value = getStoredClaudeApiKey(provider);
+  }
+  if (apiKeyModalHintEl) {
+    apiKeyModalHintEl.textContent = provider === 'glm'
+      ? 'Claude Code will connect to GLM through the Z.AI Anthropic-compatible endpoint.'
+      : 'This key is saved in this browser and sent only when starting a Claude Code session.';
   }
 }
 
@@ -156,9 +187,8 @@ function openApiKeyModal(options = {}) {
   if (!apiKeyModalEl) return;
   apiKeyModalDismissed = false;
   apiKeyModalAfterSave = typeof options.afterSave === 'function' ? options.afterSave : null;
-  if (apiKeyModalInputEl) {
-    apiKeyModalInputEl.value = getStoredClaudeApiKey();
-  }
+  if (apiKeyProviderEl) apiKeyProviderEl.value = getStoredClaudeProvider();
+  updateApiKeyModalForProvider();
   apiKeyModalEl.classList.remove('hidden');
   setTimeout(() => apiKeyModalInputEl?.focus(), 0);
 }
@@ -172,13 +202,14 @@ function closeApiKeyModal() {
 
 function saveApiKeyFromModal(event) {
   if (event) event.preventDefault();
+  const provider = apiKeyProviderEl?.value === 'glm' ? 'glm' : 'anthropic';
   const key = (apiKeyModalInputEl?.value || '').trim();
   if (!key) {
-    setTokenStatus('Enter a Claude Code API key.', 'is-error');
+    setTokenStatus(`Enter a ${provider === 'glm' ? 'GLM' : 'Claude Code'} API key.`, 'is-error');
     return;
   }
-  setStoredClaudeApiKey(key);
-  setTokenStatus('Claude Code API key saved.', 'is-success');
+  setStoredClaudeCredentials(provider, key);
+  setTokenStatus(`${provider === 'glm' ? 'GLM' : 'Anthropic'} API key saved.`, 'is-success');
   const next = apiKeyModalAfterSave;
   closeApiKeyModal();
   if (next) setTimeout(() => next(), 0);
@@ -458,7 +489,8 @@ async function connect() {
   }
 
   await loadCollabState();
-  const apiKey = getStoredClaudeApiKey();
+  const provider = getStoredClaudeProvider();
+  const apiKey = getStoredClaudeApiKey(provider);
   if (!apiKey && isPrivilegedRole(session.role) && currentCollabState?.isController !== false) {
     setConnectionStatus('offline', 'Enter Claude Code API key');
     setConnectionButton('connect');
@@ -478,7 +510,10 @@ async function connect() {
     wsOpened = true;
     let startPayload = { type: 'start' };
     startPayload.session = selected;
-    if (apiKey) startPayload.anthropic_api_key = apiKey;
+    if (apiKey) {
+      startPayload.provider = provider;
+      startPayload.api_key = apiKey;
+    }
     const rootDir = sessionRootByName[selected];
     if (rootDir) startPayload.rootDir = rootDir;
     ws.send(JSON.stringify(startPayload));
@@ -1376,6 +1411,7 @@ function initTokenManagement() {
       saveApiKeyFromModal(ev);
     });
   }
+  apiKeyProviderEl?.addEventListener('change', updateApiKeyModalForProvider);
 
   if (apiKeyModalCloseEl) {
     apiKeyModalCloseEl.addEventListener('click', () => {

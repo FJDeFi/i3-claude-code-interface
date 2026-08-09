@@ -92,6 +92,7 @@ def build_remote_command_argv(
     tmux_session: Optional[str] = None,
     root_dir: Optional[str] = None,
     read_only: bool = False,
+    provider: str = "anthropic",
 ) -> Tuple[str, ...]:
     """Return argv for the remote process (executed under a PTY).
 
@@ -103,8 +104,20 @@ def build_remote_command_argv(
     """
 
     remote_cmd = os.getenv("SSH_REMOTE_COMMAND", "").strip()
-    effective_api_key = _resolve_anthropic_api_key(api_key)
+    provider = "glm" if provider == "glm" else "anthropic"
+    effective_api_key = api_key.strip() if provider == "glm" and api_key else _resolve_anthropic_api_key(api_key)
     claude_cmd = os.getenv("CLAUDE_CODE_CMD", "claude").strip() or "claude"
+
+    def provider_exports() -> str:
+        if not effective_api_key:
+            return ""
+        if provider == "glm":
+            return (
+                f"export ANTHROPIC_AUTH_TOKEN={shlex.quote(effective_api_key)}; "
+                "export ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic; "
+                "export API_TIMEOUT_MS=3000000"
+            )
+        return f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}"
 
     if tmux_session:
         session_q = shlex.quote(tmux_session)
@@ -120,13 +133,13 @@ def build_remote_command_argv(
 
         if remote_cmd:
             if effective_api_key:
-                inner = f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}; {remote_cmd}"
+                inner = f"{provider_exports()}; {remote_cmd}"
                 create_new = f"{tmux_create_prefix}bash -lc {shlex.quote(inner)}"
             else:
                 create_new = f"{tmux_create_prefix}bash -lc {shlex.quote(remote_cmd)}"
         elif effective_api_key:
             root_arg = f" --root {root_q}" if root_dir else ""
-            inner = f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}; exec {shlex.quote(claude_cmd)}{root_arg}"
+            inner = f"{provider_exports()}; exec {shlex.quote(claude_cmd)}{root_arg}"
             create_new = f"{tmux_create_prefix}bash -lc {shlex.quote(inner)}"
         else:
             create_new = f"{tmux_create_prefix}/bin/bash -il"
@@ -154,7 +167,7 @@ def build_remote_command_argv(
 
     parts: List[str] = []
     if effective_api_key:
-        parts.append(f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}")
+        parts.append(provider_exports())
     if remote_cmd:
         parts.append(remote_cmd)
         inner = "; ".join(parts)
@@ -235,9 +248,9 @@ async def run_terminal_bridge(
             return
     # start can be a tuple (api_key, tmux_session, root_dir) or just api_key
     if isinstance(start, tuple):
-        api_key, tmux_session, root_dir = start
+        api_key, tmux_session, root_dir, provider = start
     else:
-        api_key, tmux_session, root_dir = start, None, None
+        api_key, tmux_session, root_dir, provider = start, None, None, "anthropic"
 
     if os.getenv("CLAUDE_CODE_LOCAL_TMUX", "").strip().lower() in {"1", "true", "yes"}:
         await _run_local_terminal_bridge(
@@ -248,6 +261,7 @@ async def run_terminal_bridge(
             output_callback=output_callback,
             resize_callback=resize_callback,
             read_only=read_only,
+            provider=provider,
         )
         return
 
@@ -290,13 +304,14 @@ async def run_terminal_bridge(
         tmux_session=tmux_session,
         root_dir=root_dir,
         read_only=read_only,
+        provider=provider,
     )
     remote_exec = argv_to_remote_exec_string(argv)
     logger.info(
-        "ssh remote command tmux_session=%s root_dir=%s argv=%s",
+        "ssh remote command tmux_session=%s root_dir=%s provider=%s",
         tmux_session or "",
         root_dir or "",
-        " ".join(argv),
+        provider,
     )
 
     async def scroll_remote_tmux_session(
@@ -356,6 +371,7 @@ async def _run_local_terminal_bridge(
     output_callback: Optional[OutputCallback] = None,
     resize_callback: Optional[ResizeCallback] = None,
     read_only: bool = False,
+    provider: str = "anthropic",
 ) -> None:
     cols, rows = _default_term_size()
     if resize_callback is not None:
@@ -365,12 +381,13 @@ async def _run_local_terminal_bridge(
         tmux_session=tmux_session,
         root_dir=root_dir,
         read_only=read_only,
+        provider=provider,
     )
     logger.info(
-        "local terminal command tmux_session=%s root_dir=%s argv=%s",
+        "local terminal command tmux_session=%s root_dir=%s provider=%s",
         tmux_session or "",
         root_dir or "",
-        " ".join(argv),
+        provider,
     )
     try:
         await _local_pty_bridge(
@@ -504,7 +521,7 @@ def _set_pty_size(fd: int, cols: int, rows: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
 
-StartPayload = Union[str, Tuple[Optional[str], Optional[str], Optional[str]]]
+StartPayload = Union[str, Tuple[Optional[str], Optional[str], Optional[str], str]]
 
 
 async def receive_terminal_start(websocket: WebSocket) -> Optional[StartPayload]:
@@ -535,7 +552,9 @@ async def receive_terminal_start(websocket: WebSocket) -> Optional[StartPayload]
             continue
         if payload.get("type") != "start":
             continue
-        api_key = payload.get("anthropic_api_key")
+        provider = payload.get("provider")
+        provider_val = "glm" if provider == "glm" else "anthropic"
+        api_key = payload.get("api_key", payload.get("anthropic_api_key"))
         # Optional tmux session name for attaching to a shared session
         tmux_session = payload.get("session")
         root_dir = payload.get("rootDir")
@@ -543,7 +562,7 @@ async def receive_terminal_start(websocket: WebSocket) -> Optional[StartPayload]
         tmux_val = tmux_session.strip() if isinstance(tmux_session, str) else None
         root_val = root_dir.strip() if isinstance(root_dir, str) and root_dir.strip() else None
         if tmux_val:
-            return (api_key_val, tmux_val, root_val)
+            return (api_key_val, tmux_val, root_val, provider_val)
         return api_key_val
 
 
