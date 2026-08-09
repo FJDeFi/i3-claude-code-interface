@@ -99,6 +99,21 @@ def test_build_remote_command_with_session_api_key(monkeypatch):
     assert "exec" in inner and "claude" in inner
 
 
+def test_build_remote_command_with_glm_key(monkeypatch):
+    monkeypatch.delenv("SSH_REMOTE_COMMAND", raising=False)
+    monkeypatch.setenv("CLAUDE_CODE_CMD", "claude")
+    argv = ssh_terminal.build_remote_command_argv(
+        "glm-session-secret",
+        provider="glm",
+    )
+    inner = argv[2]
+    assert "ANTHROPIC_AUTH_TOKEN=glm-session-secret" in inner
+    assert "ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic" in inner
+    assert "API_TIMEOUT_MS=3000000" in inner
+    assert "ANTHROPIC_API_KEY" not in inner
+    assert "exec claude" in inner
+
+
 def test_build_remote_command_tmux_creates_detached_without_status(monkeypatch):
     monkeypatch.delenv("SSH_REMOTE_COMMAND", raising=False)
     monkeypatch.delenv("OPENCLAW_ENV_FILE", raising=False)
@@ -252,6 +267,30 @@ def test_receive_start_api_key_ignores_initial_resize():
 
     api_key = asyncio.run(ssh_terminal._receive_start_api_key(FakeWebSocket()))
     assert api_key == "sk-ant-session"
+
+
+def test_receive_start_with_glm_provider():
+    class FakeWebSocket:
+        async def receive(self):
+            return {
+                "type": "websocket.receive",
+                "text": '{"type":"start","provider":"glm","api_key":" glm-secret ","session":"demo"}',
+            }
+
+    start = asyncio.run(ssh_terminal.receive_terminal_start(FakeWebSocket()))
+    assert start == ("glm-secret", "demo", None, "glm")
+
+
+def test_receive_start_rejects_unknown_provider():
+    class FakeWebSocket:
+        async def receive(self):
+            return {
+                "type": "websocket.receive",
+                "text": '{"type":"start","provider":"custom","api_key":"secret","session":"demo"}',
+            }
+
+    start = asyncio.run(ssh_terminal.receive_terminal_start(FakeWebSocket()))
+    assert start == ("secret", "demo", None, "anthropic")
 
 
 def test_default_term_size(monkeypatch):

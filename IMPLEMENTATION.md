@@ -104,6 +104,13 @@ and creates a short-lived HttpOnly, Secure, Partitioned Redis-backed session.
 | `CLAUDE_OWNER_UID` | yes for Google owner login | Firebase UID that owns this deployment |
 | `CLAUDE_SESSION_COOKIE_SECURE` | no | Secure session cookie toggle; default `true` |
 
+The API key dialog defaults to Anthropic and also supports GLM (Z.AI). For GLM,
+the browser sends the selected provider with the session key and the terminal
+bridge starts Claude Code with `ANTHROPIC_AUTH_TOKEN`,
+`ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic`, and a longer API timeout.
+Provider values are validated by the backend and API keys are not written to
+application logs.
+
 ### Client-side token management
 
 The web UI provides a **token management panel** (visible to owner/admin tokens only):
