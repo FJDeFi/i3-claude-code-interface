@@ -295,6 +295,7 @@ def test_receive_start_rejects_unknown_provider():
 
 def test_build_remote_command_with_codex_key(monkeypatch):
     monkeypatch.setenv("CODEX_CMD", "codex")
+    monkeypatch.setenv("CODEX_AUTO_INSTALL", "true")
     argv = ssh_terminal.build_remote_command_argv(
         "sk-openai-secret",
         tmux_session="codex-demo",
@@ -310,6 +311,24 @@ def test_build_remote_command_with_codex_key(monkeypatch):
     assert "codex login --with-api-key" in inner
     assert "exec codex" in inner
     assert "ANTHROPIC_API_KEY" not in inner
+    assert "https://chatgpt.com/codex/install.sh" in inner
+    assert inner.index("codex/install.sh") < inner.index("OPENAI_API_KEY=sk-openai-secret")
+
+
+def test_codex_auto_install_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("CODEX_CMD", "codex")
+    monkeypatch.setenv("CODEX_AUTO_INSTALL", "false")
+    argv = ssh_terminal.build_remote_command_argv(
+        "sk-openai-secret",
+        tmux_session="codex-demo",
+        provider="openai",
+        agent="codex",
+    )
+
+    inner = argv[2]
+    assert 'export PATH="$HOME/.local/bin:$PATH"' in inner
+    assert "codex/install.sh" not in inner
+    assert "Codex CLI is not installed for this VM user" in inner
 
 
 def test_failed_agent_respawn_remains_retryable(monkeypatch):

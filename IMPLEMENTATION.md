@@ -137,9 +137,14 @@ curl -fsSL https://chatgpt.com/codex/install.sh | sh
 codex --version
 ```
 
-`scripts/start.sh` automatically installs Codex when it is missing and adds the
-standalone install directory (`~/.local/bin`) to `PATH`. Run the same setup
-explicitly while provisioning an image with:
+The terminal bridge automatically installs Codex when it is missing, as the
+actual local or SSH user that owns the session. This also covers systemd units
+that invoke Uvicorn directly instead of using `scripts/start.sh`. Installation
+happens before `OPENAI_API_KEY` is exported to the session. The bridge adds the
+standalone install directory (`~/.local/bin`) to `PATH`, so it does not depend
+on `.bashrc` being loaded.
+
+Run the same setup explicitly while provisioning an image with:
 
 ```bash
 bash scripts/install-codex.sh
@@ -147,9 +152,7 @@ bash scripts/install-codex.sh
 
 The installer must run as the same non-root service account that owns the tmux
 sessions. Set `CODEX_AUTO_INSTALL=false` if the VM image already provides Codex
-or if startup-time downloads are prohibited. The bridge also adds
-`~/.local/bin` to each Codex session, so it does not depend on `.bashrc` being
-loaded.
+or if runtime downloads are prohibited.
 OpenAI API-key usage is billed through the associated OpenAI Platform account.
 
 ### Client-side token management
