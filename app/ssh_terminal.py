@@ -110,6 +110,11 @@ def build_remote_command_argv(
     effective_api_key = api_key.strip() if provider in {"glm", "openai"} and api_key else _resolve_anthropic_api_key(api_key)
     claude_cmd = os.getenv("CLAUDE_CODE_CMD", "claude").strip() or "claude"
     codex_cmd = os.getenv("CODEX_CMD", "codex").strip() or "codex"
+    codex_auto_install = os.getenv("CODEX_AUTO_INSTALL", "true").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
     def provider_exports() -> str:
         if not effective_api_key:
@@ -124,6 +129,24 @@ def build_remote_command_argv(
             return f"export OPENAI_API_KEY={shlex.quote(effective_api_key)}"
         return f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}"
 
+    def agent_setup() -> str:
+        if agent != "codex":
+            return ""
+        path_setup = 'export PATH="$HOME/.local/bin:$PATH"; '
+        if not codex_auto_install:
+            return path_setup
+        cmd_q = shlex.quote(codex_cmd)
+        return (
+            f"{path_setup}"
+            f"if ! command -v {cmd_q} >/dev/null 2>&1; then "
+            "command -v curl >/dev/null 2>&1 || "
+            "{ printf '\\r\\nCannot install Codex CLI: curl is not installed.\\r\\n' >&2; exit 127; }; "
+            "printf '\\r\\nInstalling OpenAI Codex CLI for this session user...\\r\\n'; "
+            "curl -fsSL https://chatgpt.com/codex/install.sh | sh || exit $?; "
+            'export PATH="$HOME/.local/bin:$PATH"; '
+            "fi; "
+        )
+
     def agent_command() -> str:
         mark_started = (
             f"tmux set-option -t {shlex.quote(tmux_session)} @i3_agent_started 1 && "
@@ -133,7 +156,6 @@ def build_remote_command_argv(
         if agent == "codex":
             codex_home = f"$HOME/.codex-i3/{tmux_session or 'default'}"
             return (
-                'export PATH="$HOME/.local/bin:$PATH"; '
                 f"export CODEX_HOME=\"{codex_home}\"; "
                 'mkdir -p "$CODEX_HOME" && chmod 700 "$CODEX_HOME" && '
                 f"command -v {shlex.quote(codex_cmd)} >/dev/null || "
@@ -165,7 +187,7 @@ def build_remote_command_argv(
             else:
                 create_new = f"{tmux_create_prefix}bash -lc {shlex.quote(remote_cmd)}"
         elif effective_api_key:
-            inner = f"{provider_exports()}; {agent_command()}"
+            inner = f"{agent_setup()}{provider_exports()}; {agent_command()}"
             create_new = f"{tmux_create_prefix}bash -lc {shlex.quote(inner)}"
         else:
             create_new = f"{tmux_create_prefix}/bin/bash -il"
@@ -174,7 +196,7 @@ def build_remote_command_argv(
         # Hide the tmux status bar so the browser terminal looks like a normal Claude session.
         attach_cmd = f"tmux attach -t {session_q}"
         if effective_api_key:
-            launch_inner = f"{provider_exports()}; {agent_command()}"
+            launch_inner = f"{agent_setup()}{provider_exports()}; {agent_command()}"
             respawn = f"tmux respawn-pane -k -t {session_q} bash -lc {shlex.quote(launch_inner)}"
             attach_existing = (
                 f"tmux set-option -t {session_q} status off 2>/dev/null; "
@@ -201,6 +223,10 @@ def build_remote_command_argv(
         return ("bash", "-lc", attach_or_create)
 
     parts: List[str] = []
+    if effective_api_key and not remote_cmd:
+        setup = agent_setup()
+        if setup:
+            parts.append(setup)
     if effective_api_key:
         parts.append(provider_exports())
     if remote_cmd:
