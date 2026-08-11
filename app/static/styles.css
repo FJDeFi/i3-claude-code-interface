@@ -959,7 +959,10 @@ code {
   position: relative;
   flex: 1;
   min-height: 400px;
-  padding: 10px;
+  /* Keep a little extra room below the last xterm row. FitAddon measures the
+     content box, so this reduces the advertised row count instead of clipping
+     Codex's bottom status/error line against the rounded container edge. */
+  padding: 10px 10px 18px;
   overflow: hidden;
   border: 1px solid rgba(239, 128, 28, 0.24);
   border-radius: 22px;
