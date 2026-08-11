@@ -1584,6 +1584,9 @@ window.addEventListener('resize', scheduleFit);
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', scheduleFit);
 }
+if (document.fonts?.ready) {
+  void document.fonts.ready.then(scheduleFit);
+}
 
 if (terminalWrapEl && typeof ResizeObserver !== 'undefined') {
   const ro = new ResizeObserver((entries) => {
