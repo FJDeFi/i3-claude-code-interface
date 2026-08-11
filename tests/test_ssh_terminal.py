@@ -304,10 +304,29 @@ def test_build_remote_command_with_codex_key(monkeypatch):
     )
     inner = argv[2]
     assert "OPENAI_API_KEY=sk-openai-secret" in inner
+    assert 'export PATH="$HOME/.local/bin:$PATH"' in inner
     assert 'CODEX_HOME="$HOME/.codex-i3/codex-demo"' in inner
+    assert "command -v codex" in inner
     assert "codex login --with-api-key" in inner
     assert "exec codex" in inner
     assert "ANTHROPIC_API_KEY" not in inner
+
+
+def test_failed_agent_respawn_remains_retryable(monkeypatch):
+    monkeypatch.delenv("SSH_REMOTE_COMMAND", raising=False)
+    monkeypatch.setenv("CODEX_CMD", "codex")
+    argv = ssh_terminal.build_remote_command_argv(
+        "sk-openai-secret",
+        tmux_session="codex-demo",
+        provider="openai",
+        agent="codex",
+    )
+
+    inner = argv[2]
+    login_position = inner.index("codex login --with-api-key")
+    started_position = inner.index("@i3_agent_started 1")
+    assert login_position < started_position
+    assert "respawn-pane" in inner
 
 
 def test_default_term_size(monkeypatch):

@@ -97,7 +97,9 @@ and creates a short-lived HttpOnly, Secure, Partitioned Redis-backed session.
 | `SSH_REMOTE_COMMAND` | no | If set, remote runs `bash -lc` with this command after optional `ANTHROPIC_API_KEY` export |
 | `ANTHROPIC_API_KEY` | no | If set without `SSH_REMOTE_COMMAND`, remote runs `bash -lc` that exports the key and `exec`s `CLAUDE_CODE_CMD` |
 | `CLAUDE_CODE_CMD` | no | Default `claude` |
-| `CODEX_CMD` | no | Codex CLI executable; default `codex` |
+| `CODEX_CMD` | no | Codex CLI executable; defaults to the `codex` found on `PATH` |
+| `CODEX_AUTO_INSTALL` | no | `scripts/start.sh` installs the official Codex CLI when missing; default `true` |
+| `CLAUDE_CODE_LOCAL_TMUX` | no | Run tmux as the service user without loopback SSH; `scripts/start.sh` defaults to `true` |
 | `SSH_TERM_TYPE` | no | Default `xterm-256color` |
 | `SSH_INITIAL_COLS` / `SSH_INITIAL_ROWS` | no | Initial PTY size before the client sends resize |
 | `CLAUDE_CODE_REDIS_URL` | no | Redis connection string; default `redis://127.0.0.1:6379` |
@@ -135,7 +137,19 @@ curl -fsSL https://chatgpt.com/codex/install.sh | sh
 codex --version
 ```
 
-The VM user running the terminal sessions must have `codex` on its `PATH`.
+`scripts/start.sh` automatically installs Codex when it is missing and adds the
+standalone install directory (`~/.local/bin`) to `PATH`. Run the same setup
+explicitly while provisioning an image with:
+
+```bash
+bash scripts/install-codex.sh
+```
+
+The installer must run as the same non-root service account that owns the tmux
+sessions. Set `CODEX_AUTO_INSTALL=false` if the VM image already provides Codex
+or if startup-time downloads are prohibited. The bridge also adds
+`~/.local/bin` to each Codex session, so it does not depend on `.bashrc` being
+loaded.
 OpenAI API-key usage is billed through the associated OpenAI Platform account.
 
 ### Client-side token management

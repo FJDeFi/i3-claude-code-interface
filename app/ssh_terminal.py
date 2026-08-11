@@ -125,17 +125,26 @@ def build_remote_command_argv(
         return f"export ANTHROPIC_API_KEY={shlex.quote(effective_api_key)}"
 
     def agent_command() -> str:
+        mark_started = (
+            f"tmux set-option -t {shlex.quote(tmux_session)} @i3_agent_started 1 && "
+            if tmux_session
+            else ""
+        )
         if agent == "codex":
             codex_home = f"$HOME/.codex-i3/{tmux_session or 'default'}"
             return (
+                'export PATH="$HOME/.local/bin:$PATH"; '
                 f"export CODEX_HOME=\"{codex_home}\"; "
                 'mkdir -p "$CODEX_HOME" && chmod 700 "$CODEX_HOME" && '
+                f"command -v {shlex.quote(codex_cmd)} >/dev/null || "
+                "{ printf '\\r\\nCodex CLI is not installed for this VM user.\\r\\n' >&2; exit 127; }; "
                 f"printenv OPENAI_API_KEY | {shlex.quote(codex_cmd)} login --with-api-key >/dev/null && "
                 "unset OPENAI_API_KEY && "
+                f"{mark_started}"
                 f"exec {shlex.quote(codex_cmd)}"
             )
         root_arg = f" --root {shlex.quote(root_dir)}" if root_dir else ""
-        return f"exec {shlex.quote(claude_cmd)}{root_arg}"
+        return f"{mark_started}exec {shlex.quote(claude_cmd)}{root_arg}"
 
     if tmux_session:
         session_q = shlex.quote(tmux_session)
@@ -166,10 +175,7 @@ def build_remote_command_argv(
         attach_cmd = f"tmux attach -t {session_q}"
         if effective_api_key:
             launch_inner = f"{provider_exports()}; {agent_command()}"
-            respawn = (
-                f"tmux respawn-pane -k -t {session_q} bash -lc {shlex.quote(launch_inner)}; "
-                f"tmux set-option -t {session_q} @i3_agent_started 1"
-            )
+            respawn = f"tmux respawn-pane -k -t {session_q} bash -lc {shlex.quote(launch_inner)}"
             attach_existing = (
                 f"tmux set-option -t {session_q} status off 2>/dev/null; "
                 f"if [ \"$(tmux show-option -qv -t {session_q} @i3_agent_started)\" != 1 ]; "
