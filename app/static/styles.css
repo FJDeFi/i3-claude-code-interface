@@ -714,6 +714,39 @@ code {
   line-height: 1.5;
 }
 
+.dangerous-mode-option {
+  display: flex !important;
+  grid-template-columns: none !important;
+  flex-direction: row !important;
+  gap: 10px !important;
+  align-items: flex-start;
+  padding: 12px 13px;
+  color: var(--text);
+  border: 1px solid rgba(220, 38, 38, 0.2);
+  border-radius: 16px;
+  background: rgba(220, 38, 38, 0.04);
+}
+
+.modal__form .dangerous-mode-option input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--danger);
+}
+
+.dangerous-mode-option span {
+  display: grid;
+  gap: 3px;
+}
+
+.dangerous-mode-option small {
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
 .session-checkbox-list {
   display: grid;
   gap: 8px;
