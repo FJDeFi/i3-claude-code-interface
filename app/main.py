@@ -696,7 +696,7 @@ async def create_claudecode_session(request: Request) -> JSONResponse:
     name = str(body.get("name") or "").strip()
     path = body.get("path") or None
     agent = str(body.get("agent") or "claude").strip().lower()
-    dangerous_mode = agent == "claude" and body.get("dangerousMode") is True
+    dangerous_mode = False
     if not name:
         return JSONResponse(status_code=400, content={"detail": "Session name required"})
     if not _safe_session_name(name):
@@ -722,6 +722,26 @@ async def create_claudecode_session(request: Request) -> JSONResponse:
         master_label=_session_actor_label(session),
     )
     return JSONResponse({"name": name, "agent": agent, "dangerousMode": dangerous_mode})
+@app.patch("/api/claudecode/sessions/{name}/settings")
+async def update_claudecode_session_settings(name: str, request: Request) -> JSONResponse:
+    session = await _require_privileged_session(request)
+    if not session:
+        return JSONResponse(status_code=403, content={"detail": "Owner/admin token required"})
+    if not _safe_session_name(name):
+        return JSONResponse(status_code=400, content={"detail": "Invalid session name"})
+
+    details = _session_details(name)
+    if not details["configured"]:
+        return JSONResponse(status_code=404, content={"detail": "Session not found"})
+
+    body = await request.json()
+    dangerous_mode = details["agent"] == "claude" and body.get("dangerousMode") is True
+    rc, _, err = _run_cmd(
+        f"tmux set-option -t {shlex.quote(name)} @i3_dangerous_mode {'1' if dangerous_mode else '0'}"
+    )
+    if rc != 0:
+        return JSONResponse(status_code=500, content={"detail": "Failed to update session", "error": err})
+    return JSONResponse({"name": name, "dangerousMode": dangerous_mode})
 
 
 @app.get("/api/claudecode/sessions/{name}/collab")
