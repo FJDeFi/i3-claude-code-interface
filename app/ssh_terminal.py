@@ -94,6 +94,7 @@ def build_remote_command_argv(
     read_only: bool = False,
     provider: str = "anthropic",
     agent: str = "claude",
+    dangerous_mode: bool = False,
 ) -> Tuple[str, ...]:
     """Return argv for the remote process (executed under a PTY).
 
@@ -166,7 +167,8 @@ def build_remote_command_argv(
                 f"exec {shlex.quote(codex_cmd)}"
             )
         root_arg = f" --root {shlex.quote(root_dir)}" if root_dir else ""
-        return f"{mark_started}exec {shlex.quote(claude_cmd)}{root_arg}"
+        permission_arg = " --dangerously-skip-permissions" if dangerous_mode else ""
+        return f"{mark_started}exec {shlex.quote(claude_cmd)}{permission_arg}{root_arg}"
 
     if tmux_session:
         session_q = shlex.quote(tmux_session)
@@ -308,9 +310,9 @@ async def run_terminal_bridge(
             return
     # start can be a tuple (api_key, tmux_session, root_dir) or just api_key
     if isinstance(start, tuple):
-        api_key, tmux_session, root_dir, provider, agent = start
+        api_key, tmux_session, root_dir, provider, agent, dangerous_mode = start
     else:
-        api_key, tmux_session, root_dir, provider, agent = start, None, None, "anthropic", "claude"
+        api_key, tmux_session, root_dir, provider, agent, dangerous_mode = start, None, None, "anthropic", "claude", False
 
     if os.getenv("CLAUDE_CODE_LOCAL_TMUX", "").strip().lower() in {"1", "true", "yes"}:
         await _run_local_terminal_bridge(
@@ -323,6 +325,7 @@ async def run_terminal_bridge(
             read_only=read_only,
             provider=provider,
             agent=agent,
+            dangerous_mode=dangerous_mode,
         )
         return
 
@@ -367,6 +370,7 @@ async def run_terminal_bridge(
         read_only=read_only,
         provider=provider,
         agent=agent,
+        dangerous_mode=dangerous_mode,
     )
     remote_exec = argv_to_remote_exec_string(argv)
     logger.info(
@@ -435,6 +439,7 @@ async def _run_local_terminal_bridge(
     read_only: bool = False,
     provider: str = "anthropic",
     agent: str = "claude",
+    dangerous_mode: bool = False,
 ) -> None:
     cols, rows = _default_term_size()
     if resize_callback is not None:
@@ -446,6 +451,7 @@ async def _run_local_terminal_bridge(
         read_only=read_only,
         provider=provider,
         agent=agent,
+        dangerous_mode=dangerous_mode,
     )
     logger.info(
         "local terminal command tmux_session=%s root_dir=%s provider=%s",
@@ -585,7 +591,7 @@ def _set_pty_size(fd: int, cols: int, rows: int) -> None:
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
 
 
-StartPayload = Union[str, Tuple[Optional[str], Optional[str], Optional[str], str, str]]
+StartPayload = Union[str, Tuple[Optional[str], Optional[str], Optional[str], str, str, bool]]
 
 
 async def receive_terminal_start(websocket: WebSocket) -> Optional[StartPayload]:
@@ -624,11 +630,12 @@ async def receive_terminal_start(websocket: WebSocket) -> Optional[StartPayload]
         # Optional tmux session name for attaching to a shared session
         tmux_session = payload.get("session")
         root_dir = payload.get("rootDir")
+        dangerous_mode = agent_val == "claude" and payload.get("dangerousMode") is True
         api_key_val = api_key.strip() or None if isinstance(api_key, str) else None
         tmux_val = tmux_session.strip() if isinstance(tmux_session, str) else None
         root_val = root_dir.strip() if isinstance(root_dir, str) and root_dir.strip() else None
         if tmux_val:
-            return (api_key_val, tmux_val, root_val, provider_val, agent_val)
+            return (api_key_val, tmux_val, root_val, provider_val, agent_val, dangerous_mode)
         return api_key_val
 
 

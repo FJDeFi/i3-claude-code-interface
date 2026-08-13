@@ -278,7 +278,7 @@ def test_receive_start_with_glm_provider():
             }
 
     start = asyncio.run(ssh_terminal.receive_terminal_start(FakeWebSocket()))
-    assert start == ("glm-secret", "demo", None, "glm", "claude")
+    assert start == ("glm-secret", "demo", None, "glm", "claude", False)
 
 
 def test_receive_start_rejects_unknown_provider():
@@ -290,7 +290,33 @@ def test_receive_start_rejects_unknown_provider():
             }
 
     start = asyncio.run(ssh_terminal.receive_terminal_start(FakeWebSocket()))
-    assert start == ("secret", "demo", None, "anthropic", "claude")
+    assert start == ("secret", "demo", None, "anthropic", "claude", False)
+
+
+def test_build_claude_dangerous_mode_command(monkeypatch):
+    monkeypatch.setenv("CLAUDE_CODE_CMD", "claude")
+    argv = ssh_terminal.build_remote_command_argv(
+        "sk-ant-secret",
+        tmux_session="danger-demo",
+        provider="anthropic",
+        agent="claude",
+        dangerous_mode=True,
+    )
+
+    assert "exec claude --dangerously-skip-permissions" in argv[2]
+
+
+def test_codex_never_receives_claude_dangerous_mode_flag(monkeypatch):
+    monkeypatch.setenv("CODEX_CMD", "codex")
+    argv = ssh_terminal.build_remote_command_argv(
+        "sk-openai-secret",
+        tmux_session="codex-demo",
+        provider="openai",
+        agent="codex",
+        dangerous_mode=True,
+    )
+
+    assert "--dangerously-skip-permissions" not in argv[2]
 
 
 def test_build_remote_command_with_codex_key(monkeypatch):

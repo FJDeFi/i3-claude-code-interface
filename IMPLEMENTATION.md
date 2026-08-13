@@ -129,6 +129,11 @@ the session pane. Codex authenticates with `codex login --with-api-key` and uses
 an isolated `CODEX_HOME` at `~/.codex-i3/<session-name>`, so credentials are not
 shared between Codex sessions.
 
+Claude Code sessions can optionally enable dangerous mode at creation time.
+The setting is stored in tmux metadata and adds
+`--dangerously-skip-permissions` for both Anthropic and GLM sessions. It is
+off by default and is never passed to Codex.
+
 Install both CLIs on the VM when both agent types are enabled. Codex can be
 installed on macOS/Linux with OpenAI's standalone installer:
 

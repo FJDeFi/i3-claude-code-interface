@@ -226,6 +226,7 @@ def test_create_claudecode_session_hides_tmux_status(monkeypatch, client):
         "tmux new -d -s demo",
         "tmux set-option -t demo status off",
         "tmux set-option -t demo @i3_agent claude",
+        "tmux set-option -t demo @i3_dangerous_mode 0",
         "tmux set-option -t demo @i3_agent_started 0",
     ]
 
@@ -253,9 +254,32 @@ def test_create_codex_session_records_agent_metadata(monkeypatch, client):
     )
 
     assert response.status_code == 200
-    assert response.json() == {"name": "codex-demo", "agent": "codex"}
+    assert response.json() == {"name": "codex-demo", "agent": "codex", "dangerousMode": False}
     assert "tmux set-option -t codex-demo @i3_agent codex" in commands
     assert not any("@i3_provider" in command for command in commands)
+
+
+def test_create_claude_dangerous_mode_session(monkeypatch, client):
+    commands = []
+
+    async def fake_require_privileged_session(request):
+        return {"token": "owner", "role": "owner", "accessType": "editor"}
+
+    async def fake_ensure_collab_state(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("app.main._require_privileged_session", fake_require_privileged_session)
+    monkeypatch.setattr("app.main.ensure_collab_state", fake_ensure_collab_state)
+    monkeypatch.setattr("app.main._run_cmd", lambda cmd: (commands.append(cmd) or (0, "", "")))
+
+    response = client.post(
+        "/api/claudecode/sessions",
+        json={"name": "danger-demo", "agent": "claude", "dangerousMode": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["dangerousMode"] is True
+    assert "tmux set-option -t danger-demo @i3_dangerous_mode 1" in commands
 
 
 def test_collab_api_status_request_and_transfer(monkeypatch, client):

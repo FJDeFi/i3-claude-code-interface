@@ -28,6 +28,9 @@ const sessionModalFormEl = document.querySelector('#session-modal-form');
 const sessionModalNameEl = document.querySelector('#session-modal-name');
 const sessionModalPathEl = document.querySelector('#session-modal-path');
 const sessionModalCloseEl = document.querySelector('#session-modal-close');
+const dangerousModeOptionEl = document.querySelector('#dangerous-mode-option');
+const dangerousModeInputEl = document.querySelector('#dangerous-mode-input');
+const sessionAgentEls = document.querySelectorAll('input[name="session-agent"]');
 const collabControlsEl = document.querySelector('#collab-controls');
 const collabRoleBadgeEl = document.querySelector('#collab-role-badge');
 const collabStatusEl = document.querySelector('#collab-status');
@@ -1064,8 +1067,15 @@ function getSelectedSession() {
   return value;
 }
 
+function updateDangerousModeVisibility() {
+  const isClaude = document.querySelector('input[name="session-agent"]:checked')?.value !== 'codex';
+  dangerousModeOptionEl?.classList.toggle('hidden', !isClaude);
+  if (!isClaude && dangerousModeInputEl) dangerousModeInputEl.checked = false;
+}
+
 function openSessionModal() {
   if (!sessionModalEl) return;
+  updateDangerousModeVisibility();
   sessionModalEl.classList.remove('hidden');
   sessionModalNameEl?.focus();
 }
@@ -1204,6 +1214,7 @@ async function createSessionFromModal(event) {
   const name = (sessionModalNameEl?.value || '').trim();
   const path = (sessionModalPathEl?.value || '').trim() || undefined;
   const agent = document.querySelector('input[name="session-agent"]:checked')?.value === 'codex' ? 'codex' : 'claude';
+  const dangerousMode = agent === 'claude' && Boolean(dangerousModeInputEl?.checked);
   if (!name) {
     setTokenStatus('Enter a session name.', 'is-error');
     return;
@@ -1212,7 +1223,7 @@ async function createSessionFromModal(event) {
   const resp = await apiFetch('/api/claudecode/sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, path, agent }),
+    body: JSON.stringify({ name, path, agent, dangerousMode }),
   });
   const payload = await resp.json().catch(() => ({}));
   if (!resp.ok) {
@@ -1531,6 +1542,8 @@ function initSessionPicker() {
     void loadCollabState();
   });
 }
+
+sessionAgentEls.forEach((radio) => radio.addEventListener('change', updateDangerousModeVisibility));
 
 window.addEventListener('beforeunload', () => {
   clearReconnectTimer();

@@ -414,7 +414,7 @@ async def terminal_socket(websocket: WebSocket) -> None:
         # keep accepting the client-side Claude provider for compatibility.
         if details["configured"]:
             provider = "openai" if details["agent"] == "codex" else start[3]
-            start = (start[0], start[1], start[2], provider, details["agent"])
+            start = (start[0], start[1], start[2], provider, details["agent"], details["dangerousMode"])
 
     state = await _ensure_collab_for_privileged(tmux_session, session)
     if state is None:
@@ -579,6 +579,7 @@ def _tmux_option(name: str, option: str) -> str:
 def _session_details(name: str) -> dict[str, object]:
     agent = _tmux_option(name, "@i3_agent")
     provider = _tmux_option(name, "@i3_provider")
+    dangerous_mode = _tmux_option(name, "@i3_dangerous_mode") == "1"
     configured = agent in {"claude", "codex"}
     if agent not in {"claude", "codex"}:
         agent = "claude"
@@ -586,6 +587,7 @@ def _session_details(name: str) -> dict[str, object]:
         provider = "openai" if agent == "codex" else "anthropic"
     if agent == "codex":
         provider = "openai"
+        dangerous_mode = False
     elif provider == "openai":
         provider = "anthropic"
     return {
@@ -593,6 +595,7 @@ def _session_details(name: str) -> dict[str, object]:
         "agent": agent,
         "provider": provider,
         "configured": configured,
+        "dangerousMode": dangerous_mode,
     }
 
 
@@ -693,6 +696,7 @@ async def create_claudecode_session(request: Request) -> JSONResponse:
     name = str(body.get("name") or "").strip()
     path = body.get("path") or None
     agent = str(body.get("agent") or "claude").strip().lower()
+    dangerous_mode = agent == "claude" and body.get("dangerousMode") is True
     if not name:
         return JSONResponse(status_code=400, content={"detail": "Session name required"})
     if not _safe_session_name(name):
@@ -710,13 +714,14 @@ async def create_claudecode_session(request: Request) -> JSONResponse:
         return JSONResponse(status_code=500, content={"detail": "Failed to create session", "error": err})
     _run_cmd(f"tmux set-option -t {name_q} status off")
     _run_cmd(f"tmux set-option -t {name_q} @i3_agent {shlex.quote(agent)}")
+    _run_cmd(f"tmux set-option -t {name_q} @i3_dangerous_mode {'1' if dangerous_mode else '0'}")
     _run_cmd(f"tmux set-option -t {name_q} @i3_agent_started 0")
     await ensure_collab_state(
         name,
         master_id=_session_actor_id(session),
         master_label=_session_actor_label(session),
     )
-    return JSONResponse({"name": name, "agent": agent})
+    return JSONResponse({"name": name, "agent": agent, "dangerousMode": dangerous_mode})
 
 
 @app.get("/api/claudecode/sessions/{name}/collab")
