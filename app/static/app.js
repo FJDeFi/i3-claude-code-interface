@@ -30,7 +30,6 @@ const sessionModalPathEl = document.querySelector('#session-modal-path');
 const sessionModalCloseEl = document.querySelector('#session-modal-close');
 const dangerousModeOptionEl = document.querySelector('#dangerous-mode-option');
 const dangerousModeInputEl = document.querySelector('#dangerous-mode-input');
-const sessionAgentEls = document.querySelectorAll('input[name="session-agent"]');
 const collabControlsEl = document.querySelector('#collab-controls');
 const collabRoleBadgeEl = document.querySelector('#collab-role-badge');
 const collabStatusEl = document.querySelector('#collab-status');
@@ -190,6 +189,7 @@ function updateApiKeyModalForProvider() {
   const selectedProvider = document.querySelector('input[name="api-key-provider"]:checked')?.value;
   const provider = details.agent === 'codex' ? 'openai' : (selectedProvider === 'glm' ? 'glm' : 'anthropic');
   const isCodex = provider === 'openai';
+  dangerousModeOptionEl?.classList.toggle('hidden', isCodex);
   if (apiKeyModalTitleEl) apiKeyModalTitleEl.textContent = isCodex ? 'OpenAI Codex API key' : 'Claude Code API key';
   if (apiKeyModalLabelEl) apiKeyModalLabelEl.textContent = isCodex ? 'OpenAI API key' : (provider === 'glm' ? 'GLM API key' : 'Anthropic API key');
   if (apiKeyModalInputEl) {
@@ -227,6 +227,7 @@ function openApiKeyModal(options = {}) {
     const preferredRadio = document.querySelector(`input[name="api-key-provider"][value="${preferredProvider}"]`);
     if (preferredRadio) preferredRadio.checked = true;
   }
+  if (dangerousModeInputEl) dangerousModeInputEl.checked = !isCodex && details.dangerousMode === true;
   updateApiKeyModalForProvider();
   apiKeyModalEl.classList.remove('hidden');
   setTimeout(() => apiKeyModalInputEl?.focus(), 0);
@@ -239,7 +240,7 @@ function closeApiKeyModal() {
   apiKeyModalDismissed = true;
 }
 
-function saveApiKeyFromModal(event) {
+async function saveApiKeyFromModal(event) {
   if (event) event.preventDefault();
   const details = getSelectedSessionDetails();
   const selectedProvider = document.querySelector('input[name="api-key-provider"]:checked')?.value;
@@ -248,6 +249,19 @@ function saveApiKeyFromModal(event) {
   if (!key) {
     setTokenStatus(`Enter a ${provider === 'openai' ? 'OpenAI' : (provider === 'glm' ? 'GLM' : 'Claude Code')} API key.`, 'is-error');
     return;
+  }
+  if (details.agent === 'claude') {
+    const settingsResp = await apiFetch(`/api/claudecode/sessions/${encodeURIComponent(details.name)}/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dangerousMode: Boolean(dangerousModeInputEl?.checked) }),
+    });
+    const settings = await settingsResp.json().catch(() => ({}));
+    if (!settingsResp.ok) {
+      setTokenStatus(settings.detail || 'Failed to save dangerous mode.', 'is-error');
+      return;
+    }
+    details.dangerousMode = settings.dangerousMode === true;
   }
   setStoredClaudeCredentials(provider, key);
   setTokenStatus(`${provider === 'openai' ? 'OpenAI' : (provider === 'glm' ? 'GLM' : 'Anthropic')} API key saved.`, 'is-success');
@@ -1471,7 +1485,7 @@ function initTokenManagement() {
 
   if (apiKeyModalFormEl) {
     apiKeyModalFormEl.addEventListener('submit', (ev) => {
-      saveApiKeyFromModal(ev);
+      void saveApiKeyFromModal(ev);
     });
   }
   apiKeyProviderEls.forEach((radio) => radio.addEventListener('change', updateApiKeyModalForProvider));
@@ -1543,7 +1557,6 @@ function initSessionPicker() {
   });
 }
 
-sessionAgentEls.forEach((radio) => radio.addEventListener('change', updateDangerousModeVisibility));
 
 window.addEventListener('beforeunload', () => {
   clearReconnectTimer();

@@ -259,22 +259,22 @@ def test_create_codex_session_records_agent_metadata(monkeypatch, client):
     assert not any("@i3_provider" in command for command in commands)
 
 
-def test_create_claude_dangerous_mode_session(monkeypatch, client):
+def test_update_claude_dangerous_mode_session(monkeypatch, client):
     commands = []
 
     async def fake_require_privileged_session(request):
         return {"token": "owner", "role": "owner", "accessType": "editor"}
 
-    async def fake_ensure_collab_state(*args, **kwargs):
-        return None
-
     monkeypatch.setattr("app.main._require_privileged_session", fake_require_privileged_session)
-    monkeypatch.setattr("app.main.ensure_collab_state", fake_ensure_collab_state)
+    monkeypatch.setattr(
+        "app.main._session_details",
+        lambda name: {"name": name, "agent": "claude", "provider": "anthropic", "configured": True, "dangerousMode": False},
+    )
     monkeypatch.setattr("app.main._run_cmd", lambda cmd: (commands.append(cmd) or (0, "", "")))
 
-    response = client.post(
-        "/api/claudecode/sessions",
-        json={"name": "danger-demo", "agent": "claude", "dangerousMode": True},
+    response = client.patch(
+        "/api/claudecode/sessions/danger-demo/settings",
+        json={"dangerousMode": True},
     )
 
     assert response.status_code == 200
