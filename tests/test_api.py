@@ -23,6 +23,62 @@ def test_health_endpoint(client):
     assert response.json() == {"status": "ok"}
 
 
+def test_agent_jobs_page_requires_privileged_session(client):
+    response = client.get("/agent-jobs")
+    assert response.status_code == 200
+    assert b"access denied" in response.content.lower()
+
+
+def test_create_and_list_agent_job(monkeypatch, client):
+    created = {
+        "id": "abc123abc123",
+        "name": "Improve data",
+        "status": "queued",
+        "files": ["input.json"],
+    }
+
+    class FakeJobs:
+        def __init__(self):
+            self.worker_started = False
+
+        def create_job(self, name, instruction, files):
+            assert name == "Improve data"
+            assert instruction == "Analyze the failures"
+            assert files == [("input.json", b'{"ok": false}')]
+            return created
+
+        def list_jobs(self):
+            return [created]
+
+        def ensure_worker(self):
+            self.worker_started = True
+
+    fake_jobs = FakeJobs()
+
+    async def fake_require_privileged_session(request):
+        return {"token": "owner", "role": "owner", "accessType": "editor"}
+
+    monkeypatch.setattr("app.main._require_privileged_session", fake_require_privileged_session)
+    monkeypatch.setattr("app.main.agent_jobs", fake_jobs)
+
+    page = client.get("/agent-jobs")
+    assert page.status_code == 200
+    assert b"Agent Jobs" in page.content
+
+    response = client.post(
+        "/api/agent-jobs",
+        data={"name": "Improve data", "instruction": "Analyze the failures"},
+        files={"files": ("input.json", b'{"ok": false}', "application/json")},
+    )
+    assert response.status_code == 201
+    assert response.json()["id"] == "abc123abc123"
+    assert fake_jobs.worker_started is True
+
+    response = client.get("/api/agent-jobs")
+    assert response.status_code == 200
+    assert response.json()["jobs"] == [created]
+
+
 def test_index_rejected_without_token(client):
     response = client.get("/")
     assert response.status_code == 200

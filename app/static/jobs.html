@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#fff8ef" />
+    <title>Agent Jobs</title>
+    <link rel="stylesheet" href="static/styles.css?v=20260816-agent-jobs" />
+  </head>
+  <body>
+    <main class="shell jobs-shell">
+      <section class="hero jobs-hero">
+        <div class="hero-copy-wrap">
+          <p class="eyebrow">Agent as a Service · Prototype</p>
+          <h1>Agent Jobs</h1>
+          <p class="jobs-intro">Submit files and an instruction. One Claude Code worker processes jobs in order on this VM.</p>
+        </div>
+        <div class="hero-status jobs-hero-actions">
+          <a class="ghost-button button-link" id="terminal-page-link" href="./">Back to Terminal</a>
+          <button class="primary-button" id="new-job-btn" type="button">New agent job</button>
+        </div>
+      </section>
+
+      <section class="panel jobs-panel">
+        <header class="panel-header">
+          <div>
+            <h2>Job queue</h2>
+            <p>Only one job runs at a time. Queued jobs start automatically.</p>
+          </div>
+          <button class="ghost-button" id="refresh-jobs-btn" type="button">Refresh</button>
+        </header>
+        <div class="token-status" id="jobs-status"></div>
+        <div class="jobs-list" id="jobs-list"></div>
+      </section>
+    </main>
+
+    <div class="modal hidden" id="job-modal" role="dialog" aria-modal="true">
+      <div class="modal__content jobs-modal__content">
+        <header class="modal__header">
+          <h3>New agent job</h3>
+          <button class="ghost-button" id="job-modal-close" type="button">Close</button>
+        </header>
+        <form id="job-form" class="modal__form">
+          <label><span>Job name</span><input id="job-name" name="name" required maxlength="120" placeholder="Improve fine-tuning data" /></label>
+          <label><span>Input files</span><input id="job-files" name="files" type="file" multiple /></label>
+          <label>
+            <span>Instruction</span>
+            <textarea id="job-instruction" name="instruction" required maxlength="50000" rows="8" placeholder="Read the files in input/, analyze the evaluation failures, and write the improved version under output/."></textarea>
+          </label>
+          <p class="modal__hint">Claude runs unattended inside this job directory. Do not upload secrets.</p>
+          <div class="modal__actions"><button class="primary-button" id="submit-job-btn" type="submit">Submit job</button></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal hidden" id="job-log-modal" role="dialog" aria-modal="true">
+      <div class="modal__content jobs-log-modal__content">
+        <header class="modal__header">
+          <h3 id="job-log-title">Job log</h3>
+          <button class="ghost-button" id="job-log-close" type="button">Close</button>
+        </header>
+        <pre class="job-log" id="job-log">No output yet.</pre>
+      </div>
+    </div>
+
+    <script src="static/jobs.js?v=20260816-agent-jobs" defer></script>
+  </body>
+</html>
