@@ -1,6 +1,8 @@
 const statusDotEl = document.querySelector('#status-dot');
 const serverStatusEl = document.querySelector('#server-status');
 const terminalWrapEl = document.querySelector('#terminal-wrap');
+const terminalPanelEl = document.querySelector('#terminal-panel');
+const terminalFullscreenBtnEl = document.querySelector('#terminal-fullscreen-btn');
 const terminalAuthLinkEl = document.querySelector('#terminal-auth-link');
 const terminalAuthLinkUrlEl = document.querySelector('#terminal-auth-link-url');
 const terminalAuthLinkCopyEl = document.querySelector('#terminal-auth-link-copy');
@@ -460,6 +462,21 @@ function scheduleFit() {
     }
     sendResize();
   });
+}
+
+function setTerminalFullscreen(enabled) {
+  if (!terminalPanelEl || !terminalFullscreenBtnEl) return;
+  terminalPanelEl.classList.toggle('terminal-panel--fullscreen', enabled);
+  document.body.classList.toggle('terminal-fullscreen-active', enabled);
+  terminalFullscreenBtnEl.textContent = enabled ? 'Exit full screen' : 'Full screen';
+  terminalFullscreenBtnEl.setAttribute('aria-pressed', String(enabled));
+  terminalFullscreenBtnEl.setAttribute('aria-label', enabled ? 'Exit terminal full screen' : 'Open terminal full screen');
+  scheduleFit();
+  requestAnimationFrame(scheduleFit);
+}
+
+function toggleTerminalFullscreen() {
+  setTerminalFullscreen(!terminalPanelEl?.classList.contains('terminal-panel--fullscreen'));
 }
 
 function applyControllerTerminalSize() {
@@ -1566,10 +1583,16 @@ window.addEventListener('beforeunload', () => {
 });
 window.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') {
+    if (terminalPanelEl?.classList.contains('terminal-panel--fullscreen')) {
+      setTerminalFullscreen(false);
+      return;
+    }
     closeSessionModal();
     closeTokenSessionsModal();
   }
 });
+
+terminalFullscreenBtnEl?.addEventListener('click', toggleTerminalFullscreen);
 
 connectionToggleBtn.addEventListener('click', () => {
   if (connectionToggleBtn.dataset.state === 'disconnect') {
