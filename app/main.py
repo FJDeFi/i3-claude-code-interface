@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import FastAPI, Header, Request, WebSocket
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi import FastAPI, File, Form, Header, Request, UploadFile, WebSocket
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
@@ -24,6 +24,7 @@ from .ssh_terminal import receive_terminal_start, run_terminal_bridge
 from .logging_setup import setup_logger
 from .firebase_auth import verify_owner_id_token
 from .terminal_hub import TerminalHub
+from .agent_jobs import agent_jobs
 from .token import (
     create_token,
     create_web_session,
@@ -289,6 +290,91 @@ async def index(request: Request) -> HTMLResponse:
         return _render_html("rejected.html")
     logger.info("GET / ok", extra={"token": _mask_token(session.get("token", "")), "role": session.get("role")})
     return _render_html("index.html", session=session)
+
+
+@app.get("/agent-jobs", include_in_schema=False)
+async def agent_jobs_page(request: Request) -> HTMLResponse:
+    session = await _require_privileged_session(request)
+    if not session:
+        return _render_html("rejected.html")
+    return _render_html("jobs.html", session=session)
+
+
+@app.get("/api/agent-jobs")
+async def list_agent_jobs(request: Request) -> JSONResponse:
+    if not await _require_privileged_session(request):
+        return JSONResponse(status_code=403, content={"detail": "Owner/admin access required"})
+    agent_jobs.ensure_worker()
+    return JSONResponse({"jobs": agent_jobs.list_jobs()})
+
+
+@app.post("/api/agent-jobs")
+async def create_agent_job(
+    request: Request,
+    name: str = Form(...),
+    instruction: str = Form(...),
+    files: list[UploadFile] = File(default=[]),
+) -> JSONResponse:
+    if not await _require_privileged_session(request):
+        return JSONResponse(status_code=403, content={"detail": "Owner/admin access required"})
+    if len(files) > 10:
+        return JSONResponse(status_code=400, content={"detail": "Upload at most 10 files per job"})
+    uploads: list[tuple[str, bytes]] = []
+    total_bytes = 0
+    for upload in files:
+        content = await upload.read()
+        total_bytes += len(content)
+        if total_bytes > 25 * 1024 * 1024:
+            return JSONResponse(status_code=413, content={"detail": "Combined uploads must be 25 MB or smaller"})
+        uploads.append((upload.filename or "", content))
+    try:
+        record = agent_jobs.create_job(name, instruction, uploads)
+    except (ValueError, OSError) as exc:
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+    agent_jobs.ensure_worker()
+    return JSONResponse(status_code=201, content=record)
+
+
+@app.get("/api/agent-jobs/{job_id}")
+async def get_agent_job(job_id: str, request: Request) -> JSONResponse:
+    if not await _require_privileged_session(request):
+        return JSONResponse(status_code=403, content={"detail": "Owner/admin access required"})
+    record = agent_jobs.get_job(job_id)
+    if not record:
+        return JSONResponse(status_code=404, content={"detail": "Job not found"})
+    return JSONResponse(record)
+
+
+@app.get("/api/agent-jobs/{job_id}/log")
+async def get_agent_job_log(job_id: str, request: Request) -> JSONResponse:
+    if not await _require_privileged_session(request):
+        return JSONResponse(status_code=403, content={"detail": "Owner/admin access required"})
+    try:
+        log = agent_jobs.log_text(job_id)
+    except FileNotFoundError:
+        return JSONResponse(status_code=404, content={"detail": "Job not found"})
+    return JSONResponse({"id": job_id, "log": log})
+
+
+@app.post("/api/agent-jobs/{job_id}/cancel")
+async def cancel_agent_job(job_id: str, request: Request) -> JSONResponse:
+    if not await _require_privileged_session(request):
+        return JSONResponse(status_code=403, content={"detail": "Owner/admin access required"})
+    record = await agent_jobs.cancel(job_id)
+    if not record:
+        return JSONResponse(status_code=404, content={"detail": "Job not found"})
+    return JSONResponse(record)
+
+
+@app.get("/api/agent-jobs/{job_id}/result")
+async def download_agent_job_result(job_id: str, request: Request) -> Response:
+    if not await _require_privileged_session(request):
+        return JSONResponse(status_code=403, content={"detail": "Owner/admin access required"})
+    try:
+        archive = agent_jobs.result_archive(job_id)
+    except FileNotFoundError:
+        return JSONResponse(status_code=404, content={"detail": "Completed result not found"})
+    return FileResponse(archive, media_type="application/zip", filename=f"agent-job-{job_id}-result.zip")
 
 
 @app.get("/health")

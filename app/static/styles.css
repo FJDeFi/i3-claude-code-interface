@@ -950,6 +950,141 @@ code {
   transform: none;
 }
 
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.jobs-shell {
+  width: min(1080px, calc(100% - 36px));
+}
+
+.jobs-hero {
+  align-items: stretch;
+}
+
+.jobs-hero .hero-copy-wrap {
+  min-height: 150px;
+}
+
+.jobs-intro {
+  max-width: 720px;
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.jobs-hero-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+  align-items: stretch;
+}
+
+.jobs-panel {
+  height: auto;
+  min-height: 460px;
+}
+
+.jobs-list {
+  display: grid;
+  gap: 12px;
+}
+
+.job-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.job-card__summary {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.job-card h3,
+.job-card p {
+  margin: 0;
+}
+
+.job-card h3 {
+  font-size: 1rem;
+}
+
+.job-card__summary p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.job-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.job-card__error {
+  color: var(--danger);
+  font-size: 0.88rem;
+}
+
+.job-status {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.job-status--queued { color: #8a3a05; background: rgba(245, 158, 11, 0.14); }
+.job-status--running { color: #075985; background: rgba(14, 165, 233, 0.14); }
+.job-status--completed { color: #047857; background: rgba(20, 156, 104, 0.14); }
+.job-status--failed,
+.job-status--cancelled { color: #b91c1c; background: rgba(220, 38, 38, 0.12); }
+
+.modal__form textarea {
+  width: 100%;
+  padding: 12px;
+  resize: vertical;
+  color: var(--text);
+  border: 1px solid rgba(239, 128, 28, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.jobs-modal__content {
+  width: min(640px, calc(100% - 32px));
+}
+
+.jobs-log-modal__content {
+  width: min(900px, calc(100% - 32px));
+}
+
+.job-log {
+  max-height: 65vh;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--terminal-text);
+  background: var(--terminal-bg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .terminal-auth-link {
   display: flex;
   align-items: center;

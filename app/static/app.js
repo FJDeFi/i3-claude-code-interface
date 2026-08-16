@@ -3,6 +3,7 @@ const serverStatusEl = document.querySelector('#server-status');
 const terminalWrapEl = document.querySelector('#terminal-wrap');
 const terminalPanelEl = document.querySelector('#terminal-panel');
 const terminalFullscreenBtnEl = document.querySelector('#terminal-fullscreen-btn');
+const agentJobsLinkEl = document.querySelector('#agent-jobs-link');
 const terminalAuthLinkEl = document.querySelector('#terminal-auth-link');
 const terminalAuthLinkUrlEl = document.querySelector('#terminal-auth-link-url');
 const terminalAuthLinkCopyEl = document.querySelector('#terminal-auth-link-copy');
@@ -77,6 +78,8 @@ let allSessions = [];
 let tokenSessionsModalContext = { type: 'create', token: null };
 let tokenSessionsModalSelected = [];
 let apiKeyModalAfterSave = null;
+
+if (agentJobsLinkEl) agentJobsLinkEl.href = `agent-jobs${window.location.search || ''}`;
 let apiKeyModalDismissed = false;
 let currentCollabState = null;
 let terminalOutputBuffer = '';

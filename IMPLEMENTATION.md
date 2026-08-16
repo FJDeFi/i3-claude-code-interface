@@ -174,6 +174,45 @@ The web UI provides a **token management panel** (visible to owner/admin tokens 
 - **Auto-refresh** — Token list refreshes every 3 seconds while the panel is
   visible, so revoked or expired tokens appear up-to-date.
 
+### Agent Jobs prototype
+
+Privileged users can open `/agent-jobs` from the Terminal header and submit a
+name, instruction, and up to 10 input files (25 MB combined). The prototype is
+intentionally single-VM and single-worker: jobs are persisted under
+`AGENT_JOBS_DIR`, queued in creation order, and processed one at a time.
+
+For each job, the worker creates an isolated directory and tmux session, then
+injects `bash runner.sh` with `tmux send-keys`. The runner uses Claude Code's
+non-interactive print mode with the subscription login belonging to
+`AGENT_JOBS_USER` (by default `SSH_USER`). Claude receives paths to the uploaded
+files, writes artifacts under `output/`, and its stdout/stderr is captured in
+`claude.log`. The server uses the CLI exit code plus the presence of output
+files to mark the job completed; it does not guess completion from an idle
+terminal screen.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_JOBS_DIR` | `/var/lib/i3-agent-jobs` | Persistent job workspaces and results |
+| `AGENT_JOBS_USER` | `SSH_USER` | Linux user whose Claude subscription login and tmux server are used |
+| `AGENT_JOB_TIMEOUT_SECONDS` | `3600` | Maximum runtime per job |
+
+The worker runs Claude with `--dangerously-skip-permissions` inside the job
+directory. Keep this prototype restricted to trusted owner/admin users and do
+not upload secrets. Before testing, log Claude Code into the job account once:
+
+```bash
+runuser -l claude -c 'claude'
+```
+
+Minimal smoke test:
+
+1. Create `hello.txt` containing `hello`.
+2. Open `/agent-jobs`, select **New agent job**, and upload `hello.txt`.
+3. Enter: `Read input/hello.txt and write output/result.txt containing the same word in uppercase.`
+4. Submit and confirm the status changes `queued → running → completed`.
+5. Open **View log**, then download the result ZIP and verify `result.txt`
+   contains `HELLO`.
+
 ### Security
 
 This service can reach any host the SSH key allows. Run it behind TLS, limit
