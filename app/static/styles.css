@@ -1233,6 +1233,32 @@ body.embed .terminal-wrap {
   }
 }
 
+/* Specific selectors keep embedded and responsive layouts from replacing the
+   fixed fullscreen dimensions. */
+body.terminal-fullscreen-active {
+  overflow: hidden;
+}
+
+body .terminal-panel.terminal-panel--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  padding: 18px;
+  border: 0;
+  border-radius: 0;
+  background: var(--bg-soft);
+}
+
+body .terminal-panel.terminal-panel--fullscreen .terminal-wrap {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
 @media (max-width: 520px) {
   .shell {
     width: 100%;
