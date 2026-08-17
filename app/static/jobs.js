@@ -7,6 +7,8 @@ const jobModalEl = document.querySelector('#job-modal');
 const jobModalCloseEl = document.querySelector('#job-modal-close');
 const jobFormEl = document.querySelector('#job-form');
 const submitJobBtnEl = document.querySelector('#submit-job-btn');
+const jobFilesEl = document.querySelector('#job-files');
+const jobFileListEl = document.querySelector('#job-file-list');
 const jobLogModalEl = document.querySelector('#job-log-modal');
 const jobLogTitleEl = document.querySelector('#job-log-title');
 const jobLogEl = document.querySelector('#job-log');
@@ -14,6 +16,30 @@ const jobLogCloseEl = document.querySelector('#job-log-close');
 const terminalPageLinkEl = document.querySelector('#terminal-page-link');
 
 let jobs = [];
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderSelectedFiles() {
+  jobFileListEl.innerHTML = '';
+  const files = Array.from(jobFilesEl.files || []);
+  jobFileListEl.classList.toggle('hidden', files.length === 0);
+  for (const file of files) {
+    const item = document.createElement('li');
+    const details = document.createElement('span');
+    details.className = 'job-file-list__details';
+    const name = document.createElement('strong');
+    name.textContent = file.name;
+    const size = document.createElement('small');
+    size.textContent = formatFileSize(file.size);
+    details.append(name, size);
+    item.appendChild(details);
+    jobFileListEl.appendChild(item);
+  }
+}
 
 function currentToken() {
   if (session.token) return String(session.token);
@@ -116,6 +142,7 @@ async function submitJob(event) {
     if (!response.ok) throw new Error(payload.detail || 'Could not submit job');
     jobModalEl.classList.add('hidden');
     jobFormEl.reset();
+    renderSelectedFiles();
     setStatus(`Job ${payload.id} queued.`, 'is-success');
     await loadJobs();
   } catch (error) {
@@ -163,6 +190,7 @@ jobModalCloseEl.addEventListener('click', () => jobModalEl.classList.add('hidden
 jobLogCloseEl.addEventListener('click', () => jobLogModalEl.classList.add('hidden'));
 refreshJobsBtnEl.addEventListener('click', () => void loadJobs(true));
 jobFormEl.addEventListener('submit', (event) => void submitJob(event));
+jobFilesEl.addEventListener('change', renderSelectedFiles);
 window.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   jobModalEl.classList.add('hidden');
