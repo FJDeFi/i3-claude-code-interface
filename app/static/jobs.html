@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#fff8ef" />
     <title>Agent Jobs</title>
-    <link rel="stylesheet" href="static/styles.css?v=20260816-agent-jobs" />
+    <link rel="stylesheet" href="static/styles.css?v=20260816-file-picker" />
   </head>
   <body>
     <main class="shell jobs-shell">
@@ -42,7 +42,15 @@
         </header>
         <form id="job-form" class="modal__form">
           <label><span>Job name</span><input id="job-name" name="name" required maxlength="120" placeholder="Improve fine-tuning data" /></label>
-          <label><span>Input files</span><input id="job-files" name="files" type="file" multiple /></label>
+          <div class="job-files-field">
+            <span class="job-files-field__label">Input files</span>
+            <input id="job-files" name="files" type="file" multiple hidden />
+            <label class="job-file-picker" for="job-files">
+              <span class="job-file-picker__button">Choose files</span>
+              <span class="job-file-picker__hint">Select one or more files</span>
+            </label>
+            <ul class="job-file-list hidden" id="job-file-list" aria-live="polite"></ul>
+          </div>
           <label>
             <span>Instruction</span>
             <textarea id="job-instruction" name="instruction" required maxlength="50000" rows="8" placeholder="Read the files in input/, analyze the evaluation failures, and write the improved version under output/."></textarea>
@@ -63,6 +71,6 @@
       </div>
     </div>
 
-    <script src="static/jobs.js?v=20260816-agent-jobs" defer></script>
+    <script src="static/jobs.js?v=20260816-file-picker" defer></script>
   </body>
 </html>
